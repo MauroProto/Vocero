@@ -1,6 +1,9 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+logging.basicConfig(level=logging.INFO)
 
 from app.api.callbacks import router as callbacks_router
 from app.api.whatsapp import router as whatsapp_router

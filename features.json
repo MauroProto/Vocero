@@ -13,7 +13,7 @@
     "description": "Twilio WhatsApp Sandbox webhook at POST /api/whatsapp. Receives incoming messages (form-encoded POST from Twilio). Parses: From, Body, NumMedia, MediaUrl0, MediaContentType0, ProfileName. Validates Twilio signature via RequestValidator. Returns TwiML response for immediate replies. Also supports async responses via Twilio REST API (client.messages.create) for longer operations. Handle three input types: text messages, voice notes (audio/ogg), and shared contacts (text/vcard).",
     "requires_planning": false,
     "tests": "Send a WhatsApp text message → bot echoes it back. Twilio webhook logs show 200.",
-    "status": false
+    "status": true
   },
   {
     "id": "contact_parsing",
