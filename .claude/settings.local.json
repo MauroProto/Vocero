@@ -28,7 +28,20 @@
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: app_skeleton – Fix DATABASE_URL for Docker and verify skeleton\n\nOverride DATABASE_URL in docker-compose.yml to use `db` host instead of\n`localhost` so the app container connects to Postgres correctly. Verified\ndocker compose up --build runs cleanly and GET /health returns 200.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git commit:*)",
       "mcp__plugin_context7_context7__resolve-library-id",
-      "WebFetch(domain:platform.openai.com)"
+      "WebFetch(domain:platform.openai.com)",
+      "Bash(pip show:*)",
+      "Bash(python3:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(pip3 install elevenlabs==2.34.0)",
+      "Bash(pip install:*)",
+      "Bash(lsof:*)",
+      "Bash(docker ps:*)",
+      "Bash(pgrep:*)",
+      "Bash(open:*)",
+      "Bash(ngrok config add-authtoken:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

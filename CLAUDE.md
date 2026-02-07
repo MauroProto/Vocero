@@ -8,7 +8,8 @@
 - **Backend:** Python 3.12 + FastAPI
 - **Database:** PostgreSQL (via Docker)
 - **Voice AI:** ElevenLabs Conversational AI + Agentic Functions (tool calling)
-- **Telephony + WhatsApp:** Twilio (WhatsApp Sandbox + outbound PSTN calls)
+- **WhatsApp:** Meta Cloud API (send/receive messages, media download)
+- **Telephony:** Twilio (outbound PSTN calls via ElevenLabs integration)
 - **Email:** Resend (call transcript delivery)
 - **Deps:** pip + requirements.txt
 
@@ -23,9 +24,21 @@ Vocero/
 │   ├── main.py              # FastAPI entry, lifespan, routers
 │   ├── config.py            # Pydantic Settings (all env vars)
 │   ├── models/              # SQLAlchemy ORM models
-│   ├── schemas/             # Pydantic request/response schemas
-│   ├── api/                 # Route handlers (whatsapp webhook, callbacks, tools)
-│   ├── services/            # Business logic (caller, intent, transcription, email)
+│   ├── schemas/
+│   │   ├── intent.py        # Intent/entity schemas for NLU
+│   │   └── tools.py         # Schemas for voice agent tool webhooks
+│   ├── api/
+│   │   ├── whatsapp.py      # Meta WhatsApp webhook (GET verify + POST messages)
+│   │   ├── callbacks.py     # Twilio call status callbacks
+│   │   └── tools.py         # ElevenLabs agent server tool endpoints
+│   ├── services/
+│   │   ├── twilio.py        # WhatsApp messaging (Meta Cloud API) + media download
+│   │   ├── elevenlabs_call.py # Outbound voice calls via ElevenLabs+Twilio
+│   │   ├── intent.py        # NLU intent extraction (OpenAI)
+│   │   ├── transcription.py # Voice note STT (ElevenLabs Scribe)
+│   │   ├── messages.py      # Formatted WhatsApp message templates (EN/ES)
+│   │   ├── state.py         # In-memory conversation state machine
+│   │   └── contact.py       # Contact/vCard parsing
 │   └── db/                  # Database engine + session management
 ├── docs/                    # Progressive-disclosure documentation
 ├── features.json            # Machine-readable feature tracking
@@ -40,12 +53,13 @@ Vocero/
 **Users:** People who need to book appointments (doctor, hairdresser, mechanic) but don't want to call around.
 
 **Core Flow:**
-1. User sends WhatsApp message or voice note describing what they need.
-2. Voice note is transcribed; text is parsed for intent (service type, time, location).
-3. Vocero places outbound calls to providers using ElevenLabs voice agents via Twilio.
-4. AI agent negotiates appointment slots in natural conversation.
-5. Mid-call: agent can escalate to user via WhatsApp for decisions (key differentiator).
-6. Results sent back as structured WhatsApp message. Transcript emailable via Resend.
+1. User sends WhatsApp message or voice note (received via Meta Cloud API webhook).
+2. Voice note transcribed (ElevenLabs Scribe); text parsed for intent (OpenAI GPT-4.1-mini).
+3. User shares provider contact or phone number.
+4. Vocero places outbound call via ElevenLabs voice agent (uses Twilio for PSTN).
+5. AI agent negotiates appointment slots, calling server tools (`/api/tools/*`) mid-conversation.
+6. Real-time WhatsApp updates: "Calling...", "Has availability!", "Booking confirmed!".
+7. Results sent back as structured WhatsApp message. Transcript emailable via Resend.
 
 **Domain Rules:**
 - One user can have multiple active appointment requests.
@@ -58,13 +72,27 @@ Vocero/
 ```bash
 docker compose up --build        # Start Postgres + app
 docker compose up -d db          # Postgres only
-uvicorn app.main:app --reload    # Dev server (needs Postgres running)
-ngrok http 8000                  # Expose for Twilio webhooks
+uvicorn app.main:app --reload    # Dev server (works without DB too)
+ngrok http 8000                  # Expose for Meta webhook
 ```
 
 ### Environment
 - Copy `.env.example` → `.env` and fill in API keys.
-- Set ngrok public URL in Twilio console for WhatsApp webhook.
+- Set ngrok URL as webhook in Meta Developers → WhatsApp → Configuration.
+- Webhook verify token: `vocero_verify`
+- Subscribe to `messages` field in Meta webhook config.
+
+### Key API Routes
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/whatsapp` | Meta webhook verification (hub.challenge) |
+| POST | `/api/whatsapp` | Incoming WhatsApp messages from Meta |
+| POST | `/api/call-status` | Twilio call status callbacks |
+| POST | `/api/tools/report_available_slots` | Agent reports provider slots |
+| POST | `/api/tools/check_user_preference` | Agent validates slot vs user prefs |
+| POST | `/api/tools/confirm_booking` | Agent confirms booking → WhatsApp notification |
+| POST | `/api/tools/end_call_no_availability` | Agent reports no availability |
+| GET | `/health` | Health check |
 
 ### Working Principles
 
@@ -134,7 +162,8 @@ If session dies or context resets, recover by reading:
 - [`docs/conventions/code_conventions.md`](docs/conventions/code_conventions.md) — Error handling, logging, async, naming patterns.
 - [`docs/domain/domain_overview.md`](docs/domain/domain_overview.md) — Core entities, relationships, user journeys.
 - [`docs/integrations/elevenlabs.md`](docs/integrations/elevenlabs.md) — ElevenLabs agent setup, outbound calls, server tools, transcripts.
-- [`docs/integrations/twilio.md`](docs/integrations/twilio.md) — WhatsApp webhook, voice notes, outbound calls, parallel calls.
+- [`docs/integrations/twilio.md`](docs/integrations/twilio.md) — Outbound PSTN calls, call status callbacks.
+- [`docs/integrations/meta_whatsapp.md`](docs/integrations/meta_whatsapp.md) — Meta Cloud API webhook, sending messages, media download.
 - [`docs/integrations/resend.md`](docs/integrations/resend.md) — Email transcript delivery.
 - [`docs/strategy.md`](docs/strategy.md) — Hackathon strategy, differentiators, demo script, risk mitigation.
 - [`VOCERO_Plan_Integral.md`](VOCERO_Plan_Integral.md) — Full project plan (Spanish): NLU intents, conversation state, agentic functions detail, timeline.

@@ -53,7 +53,7 @@
     "description": "Create and configure the ElevenLabs Conversational AI agent (Phone Agent) that makes outbound calls. Configure via ElevenLabs dashboard or API: system prompt (bilingual EN/ES, professional appointment booking persona), voice selection (one for EN, one for ES), first_message template with dynamic variables ({{user_name}}, {{service_type}}, {{preferred_time}}, {{language}}), LLM selection (gpt-4o-mini for speed). Import Twilio phone number into ElevenLabs. Register server tools (webhooks) pointing to our FastAPI /api/tools/ endpoints.",
     "requires_planning": true,
     "tests": "Agent exists in ElevenLabs dashboard. Test outbound call to own phone — agent speaks first message with dynamic variables filled in. Agent responds naturally to conversation.",
-    "status": false
+    "status": true
   },
   {
     "id": "outbound_voice_call",
@@ -61,7 +61,7 @@
     "description": "Place outbound calls using ElevenLabs native Twilio integration — single API call: POST /v1/convai/twilio/outbound-call. Pass agent_id, agent_phone_number_id (imported Twilio number), to_number (provider phone), and conversation_initiation_client_data with dynamic_variables. Returns conversation_id + callSid. Store both in the conversation state for tracking. Use AsyncElevenLabs client.",
     "requires_planning": false,
     "tests": "Trigger a call to a test number via WhatsApp flow. ElevenLabs agent speaks and interacts. conversation_id is logged.",
-    "status": false
+    "status": true
   },
   {
     "id": "voice_agent_tools",
@@ -69,7 +69,7 @@
     "description": "FastAPI endpoints under /api/tools/ that ElevenLabs Phone Agent calls mid-conversation via server tools (webhooks). Configure each tool in ElevenLabs dashboard with name, description, parameter schema, and webhook URL. Tools: (1) report_available_slots — agent reports slots offered by provider (array of datetime strings + notes). (2) check_user_preference — validates a proposed slot against user's time preference, returns accept/reject. (3) confirm_booking — records confirmed appointment (provider, datetime, address, notes), triggers WhatsApp confirmation. (4) escalate_to_user — sends WhatsApp message with options to user, returns user's response. (5) end_call_no_availability — marks provider as unavailable, ends call. All tool responses must be < 500ms to maintain voice latency.",
     "requires_planning": true,
     "tests": "Each /api/tools/ endpoint returns valid JSON. During a test call, agent invokes tools at appropriate moments. Tool responses are fast (< 500ms).",
-    "status": false
+    "status": true
   },
   {
     "id": "escalate_to_user",
@@ -85,7 +85,7 @@
     "description": "Send WhatsApp messages as calls progress. Triggered from: (1) When outbound call is initiated: 'Calling [provider]...'. (2) From voice_agent_tools webhooks: 'Negotiating with [provider]...', '[Provider] has availability!', '[Provider] fully booked.' (3) When call completes: summary of result. Use Twilio REST API (client.messages.create) from tool webhook handlers. Messages in user's detected language.",
     "requires_planning": false,
     "tests": "Trigger a call. User receives progress WhatsApp messages as the call progresses.",
-    "status": false
+    "status": true
   },
   {
     "id": "structured_whatsapp_response",
@@ -93,7 +93,7 @@
     "description": "After calls complete, send well-formatted WhatsApp message with: provider name, appointment date/time, address, notes. Use WhatsApp formatting (*bold*, _italic_, line breaks). For multi-provider: ranked list with recommendation. Handle failure cases (no answer, no availability, wrong number). Respond in user's detected language (EN/ES). Include option to request transcript via email.",
     "requires_planning": false,
     "tests": "Complete a booking call → user receives formatted WhatsApp confirmation in correct language.",
-    "status": false
+    "status": true
   },
   {
     "id": "email_transcript",

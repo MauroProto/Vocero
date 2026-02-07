@@ -27,6 +27,7 @@ class ConversationState:
     active_call_ids: list[str] = field(default_factory=list)
     call_results: list[dict] = field(default_factory=list)
     last_bot_message: str | None = None
+    message_history: list[str] = field(default_factory=list)
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -46,6 +47,14 @@ def reset_state(phone: str) -> None:
     _conversations[phone] = ConversationState()
 
 
+def find_state_by_conversation_id(conversation_id: str) -> tuple[str, ConversationState] | None:
+    """Find the user phone and state that owns a given ElevenLabs conversation_id."""
+    for phone, state in _conversations.items():
+        if conversation_id in state.active_call_ids:
+            return phone, state
+    return None
+
+
 def merge_entities(existing: Entities | None, new: Entities) -> Entities:
     """Merge new entities into existing ones. New non-None values override."""
     if existing is None:
@@ -57,28 +66,37 @@ def merge_entities(existing: Entities | None, new: Entities) -> Entities:
     return Entities(**merged_data)
 
 
-def build_context(state: ConversationState) -> str | None:
-    """Build a context string for the intent parser from current state.
+def add_message(state: ConversationState, role: str, text: str) -> None:
+    """Add a message to the conversation history. Keeps last 10."""
+    state.message_history.append(f"{role}: {text}")
+    if len(state.message_history) > 10:
+        state.message_history = state.message_history[-10:]
 
-    Returns None if idle with no relevant history.
-    """
-    if state.status == ConversationStatus.IDLE and not state.last_bot_message:
+
+def build_context(state: ConversationState) -> str | None:
+    """Build a rich context string for the intent parser."""
+    if state.status == ConversationStatus.IDLE and not state.message_history:
         return None
 
     parts: list[str] = []
-    parts.append(f"State: {state.status}.")
+    parts.append(f"Current state: {state.status}.")
+
+    if state.provider_phone:
+        name = state.provider_name or "unknown"
+        parts.append(f"Contact on file: {name} ({state.provider_phone}).")
 
     if state.pending_entities:
         entity_info = state.pending_entities.model_dump(exclude_none=True)
         if entity_info:
             details = ", ".join(f"{k}: {v}" for k, v in entity_info.items())
-            parts.append(f"User needs: {details}.")
+            parts.append(f"Known info: {details}.")
 
-    if state.provider_phone:
-        name = state.provider_name or "unknown"
-        parts.append(f"Provider: {name} ({state.provider_phone}).")
+    if state.call_results:
+        last = state.call_results[-1]
+        parts.append(f"Last call result: {last}.")
 
-    if state.last_bot_message:
-        parts.append(f'Last bot message: "{state.last_bot_message}"')
+    if state.message_history:
+        recent = "\n".join(state.message_history[-6:])
+        parts.append(f"\nRecent conversation:\n{recent}")
 
     return " ".join(parts)

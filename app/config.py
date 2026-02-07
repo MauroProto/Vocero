@@ -5,15 +5,21 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://vocero:vocero@localhost:5432/vocero"
 
-    # Twilio
+    # Twilio (for outbound phone calls via ElevenLabs)
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""
-    twilio_whatsapp_number: str = "whatsapp:+14155238886"
+
+    # Meta WhatsApp Cloud API
+    meta_phone_number_id: str = ""
+    meta_waba_id: str = ""
+    meta_access_token: str = ""
+    meta_webhook_verify_token: str = "vocero_verify"
 
     # ElevenLabs
     elevenlabs_api_key: str = ""
     elevenlabs_agent_id: str = ""
+    elevenlabs_phone_number_id: str = ""
 
     # OpenAI
     openai_api_key: str = ""
