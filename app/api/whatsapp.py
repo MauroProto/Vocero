@@ -6,6 +6,7 @@ from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
 
 from app.config import settings
+from app.services.contact import download_and_parse_vcard, extract_phone_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +65,21 @@ async def whatsapp_webhook(request: Request):
 
     twiml = MessagingResponse()
 
-    if msg_type == MessageType.TEXT:
-        twiml.message(f"Echo: {body}")
+    if msg_type == MessageType.CONTACT and media_url:
+        contact = await download_and_parse_vcard(media_url)
+        if contact:
+            twiml.message(
+                f"Contact received:\n*Name:* {contact.name or 'Unknown'}\n*Phone:* {contact.phone}"
+            )
+        else:
+            twiml.message("Could not parse the shared contact. Please try sending the phone number as text.")
+    elif msg_type == MessageType.TEXT:
+        phone = extract_phone_from_text(body)
+        if phone:
+            twiml.message(f"Phone number detected: {phone}")
+        else:
+            twiml.message(f"Echo: {body}")
     elif msg_type == MessageType.VOICE_NOTE:
         twiml.message("Voice note received. Processing will be available soon.")
-    elif msg_type == MessageType.CONTACT:
-        twiml.message("Contact received. Processing will be available soon.")
 
     return Response(content=str(twiml), media_type="application/xml")

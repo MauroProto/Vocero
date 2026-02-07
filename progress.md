@@ -11,3 +11,7 @@
 ### 2026-02-07 — `whatsapp_webhook`
 - **Summary:** Implemented `POST /api/whatsapp` webhook handler. Parses Twilio form-encoded POST (From, Body, NumMedia, MediaUrl0, MediaContentType0, ProfileName). Validates Twilio signature (skipped in debug mode). Classifies messages into text, voice_note, or contact types. Echoes text messages back via TwiML. Created `app/services/twilio.py` with async `send_whatsapp_message()` for future REST API messaging. Added basic logging config to `main.py`.
 - **Test:** `POST /api/whatsapp` with text → `Echo: Hello Vocero` TwiML (200). Voice note → acknowledged. Contact → acknowledged. Logs show parsed message details.
+
+### 2026-02-07 — `contact_parsing`
+- **Summary:** Created `app/services/contact.py` with vCard parsing (`parse_vcard`, `download_and_parse_vcard`) and phone regex extraction (`extract_phone_from_text`). Integrated into webhook: shared contacts download+parse vCard, text messages check for embedded phone numbers first. Graceful error handling for unreachable/unparseable vCards.
+- **Test:** vCard `FN:Dr. Juan Pérez / TEL:+54 9 11 2233-4455` → parsed correctly. Text `+54 9 11 5555-6789` → extracted `+5491155556789`. Text without phone → echo. Failed vCard download → user-friendly fallback message.

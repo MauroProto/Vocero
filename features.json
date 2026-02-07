@@ -21,7 +21,7 @@
     "description": "Parse provider contact info from two sources: (1) Shared WhatsApp contacts — received as vCard media (MediaContentType0: text/vcard). Download vCard from MediaUrl0, extract name and phone number. (2) Phone numbers typed directly in the message body — extract via regex or LLM. Store extracted provider name + phone for the outbound call.",
     "requires_planning": false,
     "tests": "Share a contact via WhatsApp → bot extracts and confirms name + phone. Type a phone number in a message → bot extracts and confirms it.",
-    "status": false
+    "status": true
   },
   {
     "id": "voice_note_processing",
