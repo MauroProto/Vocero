@@ -56,8 +56,8 @@ async def download_and_parse_vcard(media_url: str) -> ParsedContact | None:
         if resp.status_code != 200:
             logger.error("Failed to download vCard: %s", resp.status_code)
             return None
+        vcard_text = resp.text
 
-    vcard_text = resp.text
     logger.info("Downloaded vCard: %s", vcard_text[:200])
     return parse_vcard(vcard_text)
 

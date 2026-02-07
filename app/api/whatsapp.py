@@ -67,7 +67,11 @@ async def whatsapp_webhook(request: Request):
     twiml = MessagingResponse()
 
     if msg_type == MessageType.CONTACT and media_url:
-        contact = await download_and_parse_vcard(media_url)
+        try:
+            contact = await download_and_parse_vcard(media_url)
+        except Exception:
+            logger.exception("Failed to process shared contact")
+            contact = None
         if contact:
             twiml.message(
                 f"Contact received:\n*Name:* {contact.name or 'Unknown'}\n*Phone:* {contact.phone}"
@@ -81,13 +85,17 @@ async def whatsapp_webhook(request: Request):
         else:
             twiml.message(f"Echo: {body}")
     elif msg_type == MessageType.VOICE_NOTE and media_url:
-        audio_bytes = await download_media(media_url)
-        transcription = await transcribe_audio(audio_bytes)
-        lang_label = "Spanish" if transcription.language.startswith("es") else (
-            "English" if transcription.language.startswith("en") else transcription.language
-        )
-        twiml.message(
-            f"Transcription ({lang_label}):\n_{transcription.text}_"
-        )
+        try:
+            audio_bytes = await download_media(media_url)
+            transcription = await transcribe_audio(audio_bytes)
+            lang_label = "Spanish" if transcription.language.startswith("es") else (
+                "English" if transcription.language.startswith("en") else transcription.language
+            )
+            twiml.message(
+                f"Transcription ({lang_label}):\n_{transcription.text}_"
+            )
+        except Exception:
+            logger.exception("Failed to process voice note")
+            twiml.message("Sorry, I couldn't process your voice note. Please try again or send a text message.")
 
     return Response(content=str(twiml), media_type="application/xml")
