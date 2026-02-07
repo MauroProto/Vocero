@@ -45,7 +45,7 @@
     "description": "Track each user's conversation state in-memory (dict keyed by WhatsApp number). States: idle → awaiting_provider (asked user for contact/number) → calling (outbound call in progress) → awaiting_user_decision (mid-call escalation, waiting for user reply) → completed. Store: current state, pending intent/entities, active call conversation_ids, call results. Reset after appointment is booked or user cancels. This enables multi-step conversations.",
     "requires_planning": true,
     "tests": "User sends appointment request without number → state moves to awaiting_provider. User shares contact → state moves to calling. Call completes → state moves to completed. User sends new message → state resets to idle.",
-    "status": false
+    "status": true
   },
   {
     "id": "elevenlabs_agent_setup",
