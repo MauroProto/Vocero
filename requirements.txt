@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.1
+pydantic-settings==2.7.1
+httpx==0.28.1
+twilio==9.4.0
+elevenlabs==1.50.5
+resend==2.7.0
+python-multipart==0.0.20

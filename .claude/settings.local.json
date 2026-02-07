@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:elevenlabs.io)",
+      "WebFetch(domain:www.twilio.com)",
+      "WebFetch(domain:help.elevenlabs.io)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl:*)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:support.twilio.com)",
+      "Bash(python:*)",
+      "WebFetch(domain:help.twilio.com)",
+      "WebFetch(domain:alternativeto.net)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:news.aibase.com)",
+      "WebFetch(domain:aihola.com)",
+      "Bash(gh search:*)",
+      "WebFetch(domain:blog.intramind-srl.com)",
+      "WebFetch(domain:www.postman.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:pypi.org)",
+      "Bash(claude mcp add:*)",
+      "Bash(claude mcp remove:*)"
+    ]
+  }
+}

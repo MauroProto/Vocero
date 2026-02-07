@@ -1,0 +1,122 @@
+[
+  {
+    "id": "app_skeleton",
+    "name": "App Skeleton",
+    "description": "Set up FastAPI app with Docker + PostgreSQL. Health endpoint at GET /health. Docker Compose with app + db services. SQLAlchemy engine and session management. Pydantic Settings for env vars. Verify docker compose up --build runs cleanly.",
+    "requires_planning": false,
+    "tests": "docker compose up --build, then GET http://localhost:8000/health returns 200 with {\"status\": \"ok\"}.",
+    "status": false
+  },
+  {
+    "id": "whatsapp_webhook",
+    "name": "WhatsApp Webhook",
+    "description": "Twilio WhatsApp Sandbox webhook at POST /api/whatsapp. Receives incoming messages (form-encoded POST from Twilio). Parses: From, Body, NumMedia, MediaUrl0, MediaContentType0, ProfileName. Validates Twilio signature via RequestValidator. Returns TwiML response for immediate replies. Also supports async responses via Twilio REST API (client.messages.create) for longer operations. Handle three input types: text messages, voice notes (audio/ogg), and shared contacts (text/vcard).",
+    "requires_planning": false,
+    "tests": "Send a WhatsApp text message → bot echoes it back. Twilio webhook logs show 200.",
+    "status": false
+  },
+  {
+    "id": "contact_parsing",
+    "name": "Contact & Phone Number Parsing",
+    "description": "Parse provider contact info from two sources: (1) Shared WhatsApp contacts — received as vCard media (MediaContentType0: text/vcard). Download vCard from MediaUrl0, extract name and phone number. (2) Phone numbers typed directly in the message body — extract via regex or LLM. Store extracted provider name + phone for the outbound call.",
+    "requires_planning": false,
+    "tests": "Share a contact via WhatsApp → bot extracts and confirms name + phone. Type a phone number in a message → bot extracts and confirms it.",
+    "status": false
+  },
+  {
+    "id": "voice_note_processing",
+    "name": "Voice Note Processing",
+    "description": "Handle WhatsApp voice notes (audio/ogg). Detect via NumMedia > 0 and MediaContentType0 == audio/ogg. Download audio from Twilio MediaUrl0 using httpx with Twilio auth (account_sid:auth_token). Transcribe using ElevenLabs STT (speech_to_text from elevenlabs SDK — we already have the API key, no extra dependency). Detect language from transcription result. Process transcribed text through the same intent parsing flow as text messages.",
+    "requires_planning": false,
+    "tests": "Send a voice note via WhatsApp → bot responds with the transcribed text and confirms the request.",
+    "status": false
+  },
+  {
+    "id": "intent_parsing",
+    "name": "Intent & Entity Extraction",
+    "description": "Parse user messages to extract structured intent using an LLM (GPT-4o-mini or Claude). Intents: call_number (user provided a phone/contact, wants to call), request_appointment (user describes what they need but hasn't provided a number yet — ask for contact), confirm (user confirms or selects an option), cancel (user wants to stop), help (unclear message). Entities: phone_number, provider_name, service_type, date_preference, time_preference, location, special_requests, language (EN/ES). Return a Pydantic schema. Support both English and Spanish.",
+    "requires_planning": true,
+    "tests": "Send 'Llamá al dentista y pedí turno para mañana' with a shared contact → intent=call_number, service=dentist, time=tomorrow, language=es. Send 'I need a haircut Friday afternoon' → intent=request_appointment (no number yet), service=hairdresser, time=Friday PM, language=en.",
+    "status": false
+  },
+  {
+    "id": "conversation_state",
+    "name": "Conversation State Management",
+    "description": "Track each user's conversation state in-memory (dict keyed by WhatsApp number). States: idle → awaiting_provider (asked user for contact/number) → calling (outbound call in progress) → awaiting_user_decision (mid-call escalation, waiting for user reply) → completed. Store: current state, pending intent/entities, active call conversation_ids, call results. Reset after appointment is booked or user cancels. This enables multi-step conversations.",
+    "requires_planning": true,
+    "tests": "User sends appointment request without number → state moves to awaiting_provider. User shares contact → state moves to calling. Call completes → state moves to completed. User sends new message → state resets to idle.",
+    "status": false
+  },
+  {
+    "id": "elevenlabs_agent_setup",
+    "name": "ElevenLabs Phone Agent Setup",
+    "description": "Create and configure the ElevenLabs Conversational AI agent (Phone Agent) that makes outbound calls. Configure via ElevenLabs dashboard or API: system prompt (bilingual EN/ES, professional appointment booking persona), voice selection (one for EN, one for ES), first_message template with dynamic variables ({{user_name}}, {{service_type}}, {{preferred_time}}, {{language}}), LLM selection (gpt-4o-mini for speed). Import Twilio phone number into ElevenLabs. Register server tools (webhooks) pointing to our FastAPI /api/tools/ endpoints.",
+    "requires_planning": true,
+    "tests": "Agent exists in ElevenLabs dashboard. Test outbound call to own phone — agent speaks first message with dynamic variables filled in. Agent responds naturally to conversation.",
+    "status": false
+  },
+  {
+    "id": "outbound_voice_call",
+    "name": "Outbound Voice Call",
+    "description": "Place outbound calls using ElevenLabs native Twilio integration — single API call: POST /v1/convai/twilio/outbound-call. Pass agent_id, agent_phone_number_id (imported Twilio number), to_number (provider phone), and conversation_initiation_client_data with dynamic_variables. Returns conversation_id + callSid. Store both in the conversation state for tracking. Use AsyncElevenLabs client.",
+    "requires_planning": false,
+    "tests": "Trigger a call to a test number via WhatsApp flow. ElevenLabs agent speaks and interacts. conversation_id is logged.",
+    "status": false
+  },
+  {
+    "id": "voice_agent_tools",
+    "name": "Voice Agent Server Tools (Webhooks)",
+    "description": "FastAPI endpoints under /api/tools/ that ElevenLabs Phone Agent calls mid-conversation via server tools (webhooks). Configure each tool in ElevenLabs dashboard with name, description, parameter schema, and webhook URL. Tools: (1) report_available_slots — agent reports slots offered by provider (array of datetime strings + notes). (2) check_user_preference — validates a proposed slot against user's time preference, returns accept/reject. (3) confirm_booking — records confirmed appointment (provider, datetime, address, notes), triggers WhatsApp confirmation. (4) escalate_to_user — sends WhatsApp message with options to user, returns user's response. (5) end_call_no_availability — marks provider as unavailable, ends call. All tool responses must be < 500ms to maintain voice latency.",
+    "requires_planning": true,
+    "tests": "Each /api/tools/ endpoint returns valid JSON. During a test call, agent invokes tools at appropriate moments. Tool responses are fast (< 500ms).",
+    "status": false
+  },
+  {
+    "id": "escalate_to_user",
+    "name": "Mid-Call User Escalation",
+    "description": "When the Phone Agent calls escalate_to_user tool: (1) Send WhatsApp message to user with the options (e.g., 'Dr. Smith has Thursday 3pm or Friday 10am — which do you prefer?'). (2) Agent tells provider 'let me check with my client, one moment'. (3) Our backend waits for user's WhatsApp reply (conversation state = awaiting_user_decision). (4) When user replies, return their choice as the tool response to ElevenLabs. (5) Agent incorporates the response and continues negotiation. Key challenge: the tool webhook must block until user replies (or timeout after ~60s).",
+    "requires_planning": true,
+    "tests": "Agent finds 2 slots → calls escalate_to_user → user receives WhatsApp with options → user replies → agent confirms the chosen slot with provider.",
+    "status": false
+  },
+  {
+    "id": "realtime_progress",
+    "name": "Real-Time WhatsApp Progress Updates",
+    "description": "Send WhatsApp messages as calls progress. Triggered from: (1) When outbound call is initiated: 'Calling [provider]...'. (2) From voice_agent_tools webhooks: 'Negotiating with [provider]...', '[Provider] has availability!', '[Provider] fully booked.' (3) When call completes: summary of result. Use Twilio REST API (client.messages.create) from tool webhook handlers. Messages in user's detected language.",
+    "requires_planning": false,
+    "tests": "Trigger a call. User receives progress WhatsApp messages as the call progresses.",
+    "status": false
+  },
+  {
+    "id": "structured_whatsapp_response",
+    "name": "Structured WhatsApp Response",
+    "description": "After calls complete, send well-formatted WhatsApp message with: provider name, appointment date/time, address, notes. Use WhatsApp formatting (*bold*, _italic_, line breaks). For multi-provider: ranked list with recommendation. Handle failure cases (no answer, no availability, wrong number). Respond in user's detected language (EN/ES). Include option to request transcript via email.",
+    "requires_planning": false,
+    "tests": "Complete a booking call → user receives formatted WhatsApp confirmation in correct language.",
+    "status": false
+  },
+  {
+    "id": "email_transcript",
+    "name": "Email Transcript",
+    "description": "Send full call transcript to user's email via Resend. Fetch transcript from ElevenLabs: GET /v1/convai/conversations/{conversation_id} → returns transcript array with role + message + timestamp, plus analysis.summary. Build HTML email with: call summary, speaker-labeled transcript, appointment details if booked. User provides email in WhatsApp (e.g., 'send transcript to john@example.com'). Use Resend SDK.",
+    "requires_planning": false,
+    "tests": "After a call, user requests transcript → receives email with full call details.",
+    "status": false
+  },
+  {
+    "id": "multi_provider_calls",
+    "name": "Multi-Provider Parallel Calls",
+    "description": "Call 2-3 providers simultaneously. User shares multiple contacts or sends multiple numbers. For each, trigger independent outbound call via ElevenLabs API (each gets its own conversation_id). Aggregate results as calls complete using asyncio. Rank by: availability match (40%), earliest slot (30%), conversation signals (30%). Send ranked shortlist to user via WhatsApp. Respect ElevenLabs concurrency limits (~4 on free/starter plan). Stagger call initiation by ~1s (Twilio CPS limit).",
+    "requires_planning": true,
+    "tests": "User shares 3 contacts. Calls run in parallel. User receives ranked results.",
+    "status": false
+  },
+  {
+    "id": "multilingual_support",
+    "name": "Multilingual Support (EN/ES)",
+    "description": "Detect language from user's WhatsApp message or voice note transcription. Pass language as dynamic_variable to ElevenLabs agent. Agent system prompt includes bilingual instructions — speak in {{language}}. Select appropriate ElevenLabs voice per language. All WhatsApp responses (progress updates, confirmations, errors) in user's language. Intent parsing LLM prompt handles both languages.",
+    "requires_planning": true,
+    "tests": "Send Spanish voice note → transcribed in Spanish → agent calls in Spanish → results in Spanish. Send English text → agent calls in English → results in English.",
+    "status": false
+  }
+]
