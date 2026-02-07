@@ -6,7 +6,8 @@ from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
 
 from app.config import settings
-from app.services.contact import download_and_parse_vcard, extract_phone_from_text
+from app.services.contact import download_and_parse_vcard
+from app.services.intent import extract_intent
 from app.services.transcription import download_media, transcribe_audio
 
 logger = logging.getLogger(__name__)
@@ -79,21 +80,18 @@ async def whatsapp_webhook(request: Request):
         else:
             twiml.message("Could not parse the shared contact. Please try sending the phone number as text.")
     elif msg_type == MessageType.TEXT:
-        phone = extract_phone_from_text(body)
-        if phone:
-            twiml.message(f"Phone number detected: {phone}")
-        else:
+        try:
+            result = await extract_intent(body)
+            twiml.message(result.response_message)
+        except Exception:
+            logger.exception("Intent parsing failed")
             twiml.message(f"Echo: {body}")
     elif msg_type == MessageType.VOICE_NOTE and media_url:
         try:
             audio_bytes = await download_media(media_url)
             transcription = await transcribe_audio(audio_bytes)
-            lang_label = "Spanish" if transcription.language.startswith("es") else (
-                "English" if transcription.language.startswith("en") else transcription.language
-            )
-            twiml.message(
-                f"Transcription ({lang_label}):\n_{transcription.text}_"
-            )
+            result = await extract_intent(transcription.text)
+            twiml.message(result.response_message)
         except Exception:
             logger.exception("Failed to process voice note")
             twiml.message("Sorry, I couldn't process your voice note. Please try again or send a text message.")

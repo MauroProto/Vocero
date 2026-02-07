@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_agent_id: str = ""
 
+    # OpenAI
+    openai_api_key: str = ""
+
     # Resend
     resend_api_key: str = ""
     resend_from_email: str = "vocero@yourdomain.com"

@@ -19,3 +19,7 @@
 ### 2026-02-07 — `voice_note_processing`
 - **Summary:** Created `app/services/transcription.py` with `download_media()` (Twilio auth) and `transcribe_audio()` (ElevenLabs Scribe V2, auto language detection). Upgraded `elevenlabs` SDK from 1.50.5 to 2.34.0 for STT support. Webhook now downloads voice notes and returns transcription with detected language.
 - **Test:** STT API call with WAV audio → returns `TranscriptionResult(text, language, probability)`. Silence → empty text. Tone → empty text. Text/contact paths still work.
+
+### 2026-02-07 — `intent_parsing`
+- **Summary:** Created `app/schemas/intent.py` (IntentType, Language, Entities, IntentResult) and `app/services/intent.py` (GPT-4.1-mini via httpx with structured output JSON schema). Bilingual system prompt classifies 5 intents (call_number, request_appointment, confirm, cancel, help) and extracts 7 entity types. LLM generates response_message in the user's detected language. Integrated into webhook: TEXT path calls `extract_intent()` instead of echo/phone-extract, VOICE_NOTE path pipes transcription through intent parsing. Falls back to echo on OpenAI failure. Added `openai_api_key` to config. Removed unused `extract_phone_from_text` import.
+- **Test:** Spanish appointment request → intent=request_appointment, language=es, response asks for provider contact. English message → intent=request_appointment, entities populated. Phone number in text → intent=call_number. "yes" → intent=confirm. "cancel" → intent=cancel. OpenAI timeout → graceful fallback to echo.

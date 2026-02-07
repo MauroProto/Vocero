@@ -37,7 +37,7 @@
     "description": "Parse user messages to extract structured intent using an LLM (GPT-4o-mini or Claude). Intents: call_number (user provided a phone/contact, wants to call), request_appointment (user describes what they need but hasn't provided a number yet — ask for contact), confirm (user confirms or selects an option), cancel (user wants to stop), help (unclear message). Entities: phone_number, provider_name, service_type, date_preference, time_preference, location, special_requests, language (EN/ES). Return a Pydantic schema. Support both English and Spanish.",
     "requires_planning": true,
     "tests": "Send 'Llamá al dentista y pedí turno para mañana' with a shared contact → intent=call_number, service=dentist, time=tomorrow, language=es. Send 'I need a haircut Friday afternoon' → intent=request_appointment (no number yet), service=hairdresser, time=Friday PM, language=en.",
-    "status": false
+    "status": true
   },
   {
     "id": "conversation_state",
