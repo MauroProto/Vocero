@@ -1,191 +1,68 @@
-"""Outbound calls via manual Twilio→ElevenLabs WebSocket bridge.
+"""Outbound calls via ElevenLabs register-call + Twilio.
 
-Creates Twilio call with custom TwiML, bridges audio between
-Twilio Media Stream and ElevenLabs Conversational AI WebSocket.
+Uses ElevenLabs register-call endpoint to get TwiML that connects
+Twilio directly to ElevenLabs WebSocket (no manual audio bridge).
 """
 
-import asyncio
-import base64
 import json
 import logging
 
 import httpx
-import websockets
-from starlette.websockets import WebSocketDisconnect
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Track active bridges: call_sid -> conversation_id
-_active_bridges: dict[str, str] = {}
-
-
-async def _get_signed_url() -> str:
-    """Get a signed WebSocket URL from ElevenLabs."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            "https://api.elevenlabs.io/v1/convai/conversation/get-signed-url",
-            params={"agent_id": settings.elevenlabs_agent_id},
-            headers={"xi-api-key": settings.elevenlabs_api_key},
-        )
-        resp.raise_for_status()
-        return resp.json()["signed_url"]
-
-
-async def bridge_call(
-    twilio_ws,
-    call_sid: str,
-    stream_sid: str,
-    dynamic_variables: dict[str, str] | None = None,
-) -> None:
-    """Bridge audio between Twilio Media Stream and ElevenLabs WebSocket."""
-    signed_url = await _get_signed_url()
-    conversation_id = None
-
-    try:
-        async with websockets.connect(signed_url) as eleven_ws:
-            # Configure audio format for Twilio Media Streams (mulaw 8kHz)
-            init_msg: dict = {
-                "type": "conversation_initiation_client_data",
-                "conversation_config_override": {
-                    "agent": {
-                        "prompt": {},
-                        "first_message": None,
-                        "language": dynamic_variables.get("language", "es") if dynamic_variables else "es",
-                    },
-                    "asr": {
-                        "user_input_audio_format": "ulaw_8000",
-                    },
-                    "tts": {
-                        "agent_output_audio_format": "ulaw_8000",
-                    },
-                },
-            }
-            if dynamic_variables:
-                init_msg["dynamic_variables"] = dynamic_variables
-
-            await eleven_ws.send(json.dumps(init_msg))
-            logger.info("ElevenLabs WS connected, init sent for call %s", call_sid)
-
-            async def twilio_to_eleven():
-                """Forward Twilio audio → ElevenLabs."""
-                try:
-                    async for message in twilio_ws.iter_text():
-                        data = json.loads(message)
-                        event = data.get("event")
-
-                        if event == "media":
-                            payload = data.get("media", {}).get("payload", "")
-                            if payload:
-                                await eleven_ws.send(json.dumps({
-                                    "user_audio_chunk": payload,
-                                }))
-
-                        elif event == "stop":
-                            logger.info("Twilio stream stopped for call %s", call_sid)
-                            break
-                except Exception:
-                    logger.exception("twilio_to_eleven error")
-
-            async def eleven_to_twilio():
-                """Forward ElevenLabs audio → Twilio."""
-                nonlocal conversation_id
-                try:
-                    async for message in eleven_ws:
-                        data = json.loads(message)
-                        msg_type = data.get("type")
-
-                        if msg_type == "conversation_initiation_metadata":
-                            conversation_id = data.get("conversation_id", "")
-                            if conversation_id:
-                                _active_bridges[call_sid] = conversation_id
-                            logger.info("ElevenLabs conversation: %s", conversation_id)
-
-                        elif msg_type == "audio":
-                            # Handle both possible audio field formats
-                            audio_data = data.get("audio", {}).get("chunk", "")
-                            if not audio_data:
-                                audio_data = data.get("audio_event", {}).get("audio_base_64", "")
-                            if audio_data and stream_sid:
-                                try:
-                                    await twilio_ws.send_json({
-                                        "event": "media",
-                                        "streamSid": stream_sid,
-                                        "media": {"payload": audio_data},
-                                    })
-                                except WebSocketDisconnect:
-                                    logger.info("Twilio WS gone during audio send for call %s", call_sid)
-                                    break
-
-                        elif msg_type == "interruption":
-                            if stream_sid:
-                                try:
-                                    await twilio_ws.send_json({
-                                        "event": "clear",
-                                        "streamSid": stream_sid,
-                                    })
-                                except WebSocketDisconnect:
-                                    break
-
-                        elif msg_type == "ping":
-                            event_id = data.get("ping_event", {}).get("event_id")
-                            if event_id:
-                                await eleven_ws.send(json.dumps({
-                                    "type": "pong",
-                                    "event_id": event_id,
-                                }))
-
-                        elif msg_type == "agent_response":
-                            text = data.get("agent_response_event", {}).get("agent_response", "")
-                            logger.info("[Agent] %s", text[:150])
-
-                        elif msg_type == "user_transcript":
-                            text = data.get("user_transcription_event", {}).get("user_transcript", "")
-                            logger.info("[User] %s", text[:150])
-
-                        else:
-                            # Log unknown message types for debugging
-                            if msg_type not in ("internal_vad_score", "internal_turn_probability"):
-                                logger.debug("ElevenLabs msg: type=%s keys=%s", msg_type, list(data.keys()))
-
-                except websockets.exceptions.ConnectionClosed:
-                    logger.info("ElevenLabs WS closed for call %s", call_sid)
-                except WebSocketDisconnect:
-                    logger.info("Twilio WS disconnected for call %s", call_sid)
-                except Exception:
-                    logger.exception("eleven_to_twilio error")
-
-            await asyncio.gather(twilio_to_eleven(), eleven_to_twilio())
-
-    except Exception:
-        logger.exception("Bridge error for call %s", call_sid)
-    finally:
-        _active_bridges.pop(call_sid, None)
-        logger.info("Bridge closed: call=%s conv=%s", call_sid, conversation_id)
+# Track active calls: call_sid -> conversation_id
+_active_calls: dict[str, str] = {}
 
 
 async def make_outbound_call(
     to_number: str,
     dynamic_variables: dict[str, str] | None = None,
 ) -> tuple[str, str]:
-    """Place outbound call via Twilio with TwiML pointing to our WebSocket bridge."""
-    base_url = settings.app_base_url
-    ws_url = base_url.replace("https://", "wss://").replace("http://", "wss://")
+    """Place outbound call via ElevenLabs register-call + Twilio.
 
-    dv_encoded = base64.b64encode(json.dumps(dynamic_variables or {}).encode()).decode()
+    1. Register call with ElevenLabs → get TwiML (points to ElevenLabs WS)
+    2. Create Twilio call with that TwiML
+    3. Twilio connects directly to ElevenLabs (handles audio natively)
+    """
+    # Step 1: Register call with ElevenLabs
+    register_body: dict = {
+        "agent_id": settings.elevenlabs_agent_id,
+        "from_number": settings.twilio_phone_number,
+        "to_number": to_number,
+        "direction": "outbound",
+    }
+    if dynamic_variables:
+        register_body["conversation_initiation_client_data"] = {
+            "dynamic_variables": dynamic_variables,
+        }
 
-    twiml = (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        "<Response>"
-        "<Connect>"
-        f'<Stream url="{ws_url}/api/media-stream">'
-        f'<Parameter name="dv" value="{dv_encoded}" />'
-        "</Stream>"
-        "</Connect>"
-        "</Response>"
-    )
+    async with httpx.AsyncClient() as client:
+        reg_resp = await client.post(
+            "https://api.elevenlabs.io/v1/convai/twilio/register-call",
+            headers={
+                "xi-api-key": settings.elevenlabs_api_key,
+                "Content-Type": "application/json",
+            },
+            json=register_body,
+        )
+        reg_resp.raise_for_status()
+        twiml = reg_resp.text
 
+    logger.info("ElevenLabs register-call OK, got TwiML (%d bytes)", len(twiml))
+
+    # Extract conversation_id from TwiML parameter if present
+    conversation_id = ""
+    if 'name="conversation_id"' in twiml:
+        import re
+        match = re.search(r'name="conversation_id"\s+value="([^"]+)"', twiml)
+        if match:
+            conversation_id = match.group(1)
+            logger.info("Conversation ID from TwiML: %s", conversation_id)
+
+    # Step 2: Create Twilio call with ElevenLabs TwiML
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{settings.twilio_account_sid}/Calls.json",
@@ -200,10 +77,13 @@ async def make_outbound_call(
         call_data = resp.json()
         call_sid = call_data.get("sid", "")
 
-    logger.info("Outbound call: sid=%s to=%s", call_sid, to_number)
-    return "", call_sid
+    if conversation_id and call_sid:
+        _active_calls[call_sid] = conversation_id
+
+    logger.info("Outbound call: sid=%s conv=%s to=%s", call_sid, conversation_id, to_number)
+    return conversation_id, call_sid
 
 
 def get_conversation_id(call_sid: str) -> str | None:
     """Look up ElevenLabs conversation ID for an active call."""
-    return _active_bridges.get(call_sid)
+    return _active_calls.get(call_sid)

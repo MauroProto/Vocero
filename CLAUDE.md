@@ -17,6 +17,13 @@
 1. **WhatsApp Agent** = Our FastAPI backend — receives messages, parses intent, orchestrates calls, sends results
 2. **Phone Agent** = ElevenLabs voice agent — calls providers via Twilio, negotiates appointments, uses server tools
 
+### Outbound Call Flow (register-call)
+1. Our backend calls `POST /v1/convai/twilio/register-call` with agent_id, numbers, dynamic_variables
+2. ElevenLabs returns TwiML with `<Connect><Stream>` pointing to their own WebSocket
+3. We create a Twilio call with that TwiML
+4. Twilio connects **directly** to ElevenLabs — no manual audio bridge needed
+5. ElevenLabs handles audio format natively (mulaw 8kHz for Twilio)
+
 ### Repo Structure
 ```
 Vocero/
@@ -30,10 +37,11 @@ Vocero/
 │   ├── api/
 │   │   ├── whatsapp.py      # Meta WhatsApp webhook (GET verify + POST messages)
 │   │   ├── callbacks.py     # Twilio call status callbacks
-│   │   └── tools.py         # ElevenLabs agent server tool endpoints
+│   │   ├── tools.py         # ElevenLabs agent server tool endpoints
+│   │   └── media_stream.py  # (UNUSED — legacy manual WS bridge, not loaded)
 │   ├── services/
 │   │   ├── twilio.py        # WhatsApp messaging (Meta Cloud API) + media download
-│   │   ├── elevenlabs_call.py # Outbound voice calls via ElevenLabs+Twilio
+│   │   ├── elevenlabs_call.py # Outbound calls: register-call + Twilio create call
 │   │   ├── intent.py        # NLU intent extraction (OpenAI)
 │   │   ├── transcription.py # Voice note STT (ElevenLabs Scribe)
 │   │   ├── messages.py      # Formatted WhatsApp message templates (EN/ES)
@@ -56,10 +64,11 @@ Vocero/
 1. User sends WhatsApp message or voice note (received via Meta Cloud API webhook).
 2. Voice note transcribed (ElevenLabs Scribe); text parsed for intent (OpenAI GPT-4.1-mini).
 3. User shares provider contact or phone number.
-4. Vocero places outbound call via ElevenLabs voice agent (uses Twilio for PSTN).
-5. AI agent negotiates appointment slots, calling server tools (`/api/tools/*`) mid-conversation.
-6. Real-time WhatsApp updates: "Calling...", "Has availability!", "Booking confirmed!".
-7. Results sent back as structured WhatsApp message. Transcript emailable via Resend.
+4. Vocero registers call with ElevenLabs (`register-call`) → gets TwiML → creates Twilio call.
+5. Twilio connects directly to ElevenLabs WebSocket. AI agent negotiates appointment slots.
+6. Agent calls server tools (`/api/tools/*`) mid-conversation for slot reporting/booking.
+7. Real-time WhatsApp updates: "Calling...", "Has availability!", "Booking confirmed!".
+8. Results sent back as structured WhatsApp message. Transcript emailable via Resend.
 
 **Domain Rules:**
 - One user can have multiple active appointment requests.

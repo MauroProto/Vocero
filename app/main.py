@@ -6,7 +6,6 @@ from fastapi import FastAPI
 logging.basicConfig(level=logging.INFO)
 
 from app.api.callbacks import router as callbacks_router
-from app.api.media_stream import router as media_stream_router
 from app.api.tools import router as tools_router
 from app.api.whatsapp import router as whatsapp_router
 from app.db.session import engine
@@ -32,7 +31,6 @@ app = FastAPI(title="Vocero", version="0.1.0", lifespan=lifespan)
 app.include_router(whatsapp_router)
 app.include_router(callbacks_router)
 app.include_router(tools_router)
-app.include_router(media_stream_router)
 
 
 @app.get("/health")
