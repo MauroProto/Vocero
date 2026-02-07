@@ -5,7 +5,7 @@
     "description": "Set up FastAPI app with Docker + PostgreSQL. Health endpoint at GET /health. Docker Compose with app + db services. SQLAlchemy engine and session management. Pydantic Settings for env vars. Verify docker compose up --build runs cleanly.",
     "requires_planning": false,
     "tests": "docker compose up --build, then GET http://localhost:8000/health returns 200 with {\"status\": \"ok\"}.",
-    "status": false
+    "status": true
   },
   {
     "id": "whatsapp_webhook",
