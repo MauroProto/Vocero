@@ -29,7 +29,7 @@
     "description": "Handle WhatsApp voice notes (audio/ogg). Detect via NumMedia > 0 and MediaContentType0 == audio/ogg. Download audio from Twilio MediaUrl0 using httpx with Twilio auth (account_sid:auth_token). Transcribe using ElevenLabs STT (speech_to_text from elevenlabs SDK — we already have the API key, no extra dependency). Detect language from transcription result. Process transcribed text through the same intent parsing flow as text messages.",
     "requires_planning": false,
     "tests": "Send a voice note via WhatsApp → bot responds with the transcribed text and confirms the request.",
-    "status": false
+    "status": true
   },
   {
     "id": "intent_parsing",

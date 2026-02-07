@@ -101,6 +101,7 @@ ngrok http 8000                  # Expose for Twilio webhooks
 ### Parallelism Strategy
 - **Subagents** (default): Independent focused tasks where only the result matters — codebase exploration, file-scoped edits, research. Results return to main. Low overhead.
 - **Decision rule**: If tasks are independent and results just flow back → subagents. Use subagents liberally to keep main context window clean. One task per subagent for focused execution.
+- For more information on how and when to use them refer to /agent-teams-guide.md
 
 ### Task Tracking
 When implementing features from `features.json`, always create tasks to track progress (`TaskCreate`, `TaskGet`, `TaskUpdate`). After completing a feature:
