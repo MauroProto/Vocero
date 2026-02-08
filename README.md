@@ -24,7 +24,7 @@ Send a WhatsApp message. Vocero calls the provider, books your appointment, and 
 
 Vocero is a **two-agent system** that automates appointment booking through WhatsApp:
 
-> **You** text WhatsApp &rarr; **WhatsApp Agent** understands your request &rarr; **Phone Agent** calls the provider &rarr; books the appointment &rarr; sends you the result + calendar link
+> **You** text WhatsApp or send a voice note &rarr; **WhatsApp Agent** understands your request &rarr; **Phone Agent** calls the provider &rarr; books the appointment &rarr; sends you the result + calendar link
 
 | WhatsApp Agent | Phone Agent |
 |---|---|
@@ -42,10 +42,10 @@ Vocero is a **two-agent system** that automates appointment booking through What
 | **Smart NLU** | Intent extraction | GPT parses what you need, who to call, when |
 | **AI Calls** | Autonomous phone calls | Voice agent negotiates with providers naturally |
 | **Search** | Google Places | "Find a dentist near me" &rarr; ranked results |
-| **Parallel** | Multi-provider calls | Call up to 3 providers simultaneously |
+| **Parallel** | Multi-provider calls | Call multiple providers simultaneously |
 | **Live Updates** | Real-time progress | WhatsApp messages as the call happens |
 | **Calendar** | Auto calendar link | Google Calendar event after confirmed bookings |
-| **Bilingual** | EN / ES | Full support across voice, messages, and UI |
+| **Multilingual** | Multilingual by design | Full support across voice, messages, and UI |
 
 <br>
 
