@@ -303,7 +303,7 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
         if body_lower in ("transcript", "transcripcion", "transcripción"):
             conv_data = await fetch_conversation_details(state.last_conversation_id)
             if conv_data:
-                msg = format_transcript(state.provider_name or state.provider_phone, conv_data)
+                msg = format_transcript(state.provider_name or state.provider_phone, conv_data, language=state.language.value)
                 await send_whatsapp_message(from_number, msg)
             else:
                 no_msg = "No pude obtener el transcript." if state.language == Language.ES else "Couldn't retrieve the transcript."

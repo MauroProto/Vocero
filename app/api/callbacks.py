@@ -122,14 +122,14 @@ async def call_status_callback(request: Request):
                     if best_booked and best_booked["summary"].date and best_booked["summary"].time:
                         s = best_booked["summary"]
                         provider = s.provider_name or best_booked["provider_name"]
-                        service = s.service_description or "Turno"
+                        service = s.service_description or ("Turno" if lang == "es" else "Appointment")
                         cal_title = f"{service} - {provider}"
                         cal_desc_parts = []
                         if s.notes:
                             cal_desc_parts.append(s.notes)
                         if best_booked.get("phone"):
                             cal_desc_parts.append(f"Tel: {best_booked['phone']}")
-                        cal_desc_parts.append("Reservado por Vocero")
+                        cal_desc_parts.append("Reservado por Vocero" if lang == "es" else "Booked by Vocero")
                         cal_link = build_calendar_link(
                             summary=cal_title,
                             start_date=s.date,
@@ -157,14 +157,14 @@ async def call_status_callback(request: Request):
                     # Calendar link as separate message after summary
                     if summary_result.booking_confirmed and summary_result.date and summary_result.time:
                         provider = summary_result.provider_name or display_name
-                        service = summary_result.service_description or "Turno"
+                        service = summary_result.service_description or ("Turno" if lang == "es" else "Appointment")
                         cal_title = f"{service} - {provider}"
                         cal_desc_parts = []
                         if summary_result.notes:
                             cal_desc_parts.append(summary_result.notes)
                         if state.provider_phone:
                             cal_desc_parts.append(f"Tel: {state.provider_phone}")
-                        cal_desc_parts.append("Reservado por Vocero")
+                        cal_desc_parts.append("Reservado por Vocero" if lang == "es" else "Booked by Vocero")
                         cal_link = build_calendar_link(
                             summary=cal_title,
                             start_date=summary_result.date,

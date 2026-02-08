@@ -267,6 +267,7 @@ def _clean_agent_text(text: str) -> str:
 def format_transcript(
     provider_name: str | None,
     conversation_data: dict,
+    language: str = "es",
 ) -> str:
     """Format the full call transcript."""
     name = provider_name or "?"
@@ -284,7 +285,11 @@ def format_transcript(
         elif role == "user":
             lines.append(f"*{name}:* {message}")
 
-    return "\n".join(lines) if len(lines) > 1 else f"No hay transcript disponible para la llamada con *{name}*."
+    if len(lines) > 1:
+        return "\n".join(lines)
+    if language == "es":
+        return f"No hay transcript disponible para la llamada con *{name}*."
+    return f"No transcript available for the call with *{name}*."
 
 
 def format_multi_call_start(count: int, language: str = "es") -> str:
