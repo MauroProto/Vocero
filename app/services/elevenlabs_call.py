@@ -63,6 +63,7 @@ async def make_outbound_call(
             logger.info("Conversation ID from TwiML: %s", conversation_id)
 
     # Step 2: Create Twilio call with ElevenLabs TwiML
+    callback_url = f"{settings.app_base_url}/api/call-status"
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{settings.twilio_account_sid}/Calls.json",
@@ -71,6 +72,8 @@ async def make_outbound_call(
                 "To": to_number,
                 "From": settings.twilio_phone_number,
                 "Twiml": twiml,
+                "StatusCallback": callback_url,
+                "StatusCallbackEvent": "completed",
             },
         )
         resp.raise_for_status()
@@ -87,3 +90,22 @@ async def make_outbound_call(
 def get_conversation_id(call_sid: str) -> str | None:
     """Look up ElevenLabs conversation ID for an active call."""
     return _active_calls.get(call_sid)
+
+
+def pop_call(call_sid: str) -> str | None:
+    """Remove and return conversation_id for a finished call."""
+    return _active_calls.pop(call_sid, None)
+
+
+async def fetch_conversation_details(conversation_id: str) -> dict | None:
+    """Fetch conversation transcript and analysis from ElevenLabs."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}",
+            headers={"xi-api-key": settings.elevenlabs_api_key},
+            timeout=15.0,
+        )
+        if resp.status_code != 200:
+            logger.warning("Failed to fetch conversation %s: %s", conversation_id, resp.status_code)
+            return None
+        return resp.json()
