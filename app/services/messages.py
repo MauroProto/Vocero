@@ -1,5 +1,148 @@
 """Formatted WhatsApp message templates for Vocero."""
 
+import logging
+import re
+
+import httpx
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+_client: httpx.AsyncClient | None = None
+
+_SUMMARY_PROMPT = """\
+You are analyzing a phone call transcript between a voice assistant ("agent") and a service provider ("user").
+
+Your job: write a SHORT, natural summary of what happened in the call. This summary will be sent via WhatsApp to the person who requested the call.
+
+Rules:
+- Write in {language_name} ({language_code}).
+- If an appointment/booking was confirmed: include the date, time, and any important details (address, what to bring, cost, etc.).
+- If no appointment was booked: explain why (no availability, wrong number, voicemail, etc.).
+- If something else happened (information gathered, message left, etc.): summarize the key takeaway.
+- Be concise: 2-4 sentences max. This is WhatsApp, not an email.
+- Use a casual, friendly tone. In Spanish use "vos" (Argentine style).
+- Use WhatsApp formatting: *bold* for important details like dates/times.
+- Do NOT start with "La llamada..." or "The call..." — go straight to the result.
+- Do NOT include greetings or sign-offs.
+"""
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(
+            base_url="https://api.openai.com/v1",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=15.0,
+        )
+    return _client
+
+
+def _build_transcript_text(conversation_data: dict, provider_name: str) -> str:
+    """Build a plain-text transcript for LLM analysis."""
+    transcript = conversation_data.get("transcript", [])
+    lines = []
+    for entry in transcript:
+        role = entry.get("role", "")
+        message = entry.get("message") or ""
+        message = _clean_agent_text(message)
+        if not message:
+            continue
+        if role == "agent":
+            lines.append(f"Vocero: {message}")
+        elif role == "user":
+            lines.append(f"{provider_name}: {message}")
+    return "\n".join(lines)
+
+
+async def generate_smart_summary(
+    provider_name: str,
+    provider_phone: str | None,
+    conversation_data: dict,
+    language: str = "es",
+) -> str:
+    """Use OpenAI to analyze the full transcript and generate an intelligent summary."""
+    name = provider_name or provider_phone or "?"
+    transcript_text = _build_transcript_text(conversation_data, name)
+
+    if not transcript_text:
+        if language == "es":
+            return f"Llamada con *{name}* finalizada. No pude obtener detalles de la conversacion."
+        return f"Call with *{name}* finished. Couldn't get conversation details."
+
+    language_name = "Spanish" if language == "es" else "English"
+    system_prompt = _SUMMARY_PROMPT.format(language_name=language_name, language_code=language)
+
+    user_content = f"Provider called: {name}\n\nFull transcript:\n{transcript_text}"
+
+    client = _get_client()
+    try:
+        resp = await client.post(
+            "/chat/completions",
+            json={
+                "model": "gpt-5.2",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                "max_tokens": 300,
+                "temperature": 0.3,
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        summary = data["choices"][0]["message"]["content"].strip()
+
+        if language == "es":
+            lines = [
+                f"Llamada con *{name}* finalizada.\n",
+                summary,
+                "\nPedime *\"transcript\"* si queres ver la conversacion completa.",
+            ]
+        else:
+            lines = [
+                f"Call with *{name}* finished.\n",
+                summary,
+                "\nSend *\"transcript\"* if you want the full conversation.",
+            ]
+        return "\n".join(lines)
+
+    except Exception:
+        logger.exception("Failed to generate smart summary, falling back to basic")
+        return _format_basic_summary(name, conversation_data, language)
+
+
+def _format_basic_summary(name: str, conversation_data: dict, language: str) -> str:
+    """Fallback summary when LLM is unavailable."""
+    detail = _extract_last_substantive_message(conversation_data)
+    if language == "es":
+        lines = [f"Llamada con *{name}* finalizada."]
+        if detail:
+            lines.append(f"\n{detail}")
+        lines.append("\nPedime *\"transcript\"* si queres ver la conversacion completa.")
+    else:
+        lines = [f"Call with *{name}* finished."]
+        if detail:
+            lines.append(f"\n{detail}")
+        lines.append("\nSend *\"transcript\"* if you want the full conversation.")
+    return "\n".join(lines)
+
+
+def _extract_last_substantive_message(conversation_data: dict) -> str:
+    """Get the last substantive agent message as a basic fallback."""
+    transcript = conversation_data.get("transcript", [])
+    for entry in reversed(transcript):
+        msg = entry.get("message") or ""
+        msg = _clean_agent_text(msg)
+        if entry.get("role") == "agent" and len(msg) > 30:
+            return msg
+    return ""
+
 
 def format_calling_message(provider_name: str | None, phone: str, language: str = "es") -> str:
     name = provider_name or phone
@@ -64,72 +207,7 @@ def format_call_failed(provider_name: str | None, language: str = "es") -> str:
 
 def _clean_agent_text(text: str) -> str:
     """Remove XML-like language tags from agent responses."""
-    import re
     return re.sub(r"</?[A-Za-z]+>", "", text).strip()
-
-
-def format_call_summary(
-    provider_name: str | None,
-    provider_phone: str | None,
-    conversation_data: dict,
-    language: str = "es",
-) -> str:
-    """Format a short post-call summary (no transcript)."""
-    name = provider_name or provider_phone or "?"
-    analysis = conversation_data.get("analysis") or {}
-    summary_text = analysis.get("transcript_summary", "")
-
-    # Build a clean summary from transcript if ElevenLabs summary is missing or in wrong language
-    if not summary_text:
-        summary_text = _extract_key_details(conversation_data, language)
-    else:
-        # ElevenLabs always returns English summaries — keep as-is for English, translate hint for Spanish
-        if language == "es":
-            summary_text = _extract_key_details(conversation_data, language) or summary_text
-
-    if language == "es":
-        lines = [f"Llamada con *{name}* finalizada."]
-        if summary_text:
-            lines.append(f"\n{summary_text}")
-        lines.append("\nPedime *\"transcript\"* si queres ver la conversacion completa.")
-    else:
-        lines = [f"Call with *{name}* finished."]
-        if summary_text:
-            lines.append(f"\n{summary_text}")
-        lines.append("\nSend *\"transcript\"* if you want the full conversation.")
-
-    return "\n".join(lines)
-
-
-def _extract_key_details(conversation_data: dict, language: str) -> str:
-    """Extract key booking details from transcript (date, time, outcome)."""
-    transcript = conversation_data.get("transcript", [])
-    if not transcript:
-        return ""
-
-    # Get the last few agent messages which usually contain the confirmation
-    agent_msgs = []
-    for entry in transcript:
-        msg = entry.get("message") or ""
-        msg = _clean_agent_text(msg)
-        if entry.get("role") == "agent" and msg:
-            agent_msgs.append(msg)
-
-    if not agent_msgs:
-        return ""
-
-    # The last substantive agent message usually has the confirmation/outcome
-    last_msg = agent_msgs[-1] if agent_msgs else ""
-    # Check second-to-last too (last might be "goodbye")
-    confirmation_msg = ""
-    for msg in reversed(agent_msgs):
-        if len(msg) > 30:  # Skip short messages like "Hasta luego"
-            confirmation_msg = msg
-            break
-
-    if confirmation_msg:
-        return confirmation_msg
-    return ""
 
 
 def format_transcript(

@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Request
 
 from app.services.elevenlabs_call import fetch_conversation_details, pop_call
-from app.services.messages import format_call_failed, format_call_summary
+from app.services.messages import format_call_failed, generate_smart_summary
 from app.services.state import ConversationStatus, find_state_by_conversation_id
 from app.services.twilio import send_whatsapp_message
 
@@ -47,11 +47,11 @@ async def call_status_callback(request: Request):
             phone, state = result
             lang = state.language.value
             state.last_conversation_id = conversation_id
-            # Wait a bit for ElevenLabs to finalize the conversation
-            await asyncio.sleep(3)
+            # Wait for ElevenLabs to finalize the conversation
+            await asyncio.sleep(5)
             conv_data = await fetch_conversation_details(conversation_id)
             if conv_data:
-                msg = format_call_summary(state.provider_name, state.provider_phone, conv_data, language=lang)
+                msg = await generate_smart_summary(state.provider_name, state.provider_phone, conv_data, language=lang)
                 await send_whatsapp_message(phone, msg)
                 state.call_results.append({
                     "provider": state.provider_name,

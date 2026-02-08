@@ -39,6 +39,16 @@ async def make_outbound_call(
             "dynamic_variables": dynamic_variables,
         }
 
+    # Override first message for English calls
+    lang = (dynamic_variables or {}).get("language", "es")
+    if lang == "en":
+        user_name = (dynamic_variables or {}).get("user_name", "")
+        service_type = (dynamic_variables or {}).get("service_type", "")
+        first_msg = f"Hi, this is {user_name}. I'm calling about {service_type}." if user_name else f"Hi, I'm calling about {service_type}."
+        register_body["conversation_config_override"] = {
+            "agent": {"first_message": first_msg},
+        }
+
     async with httpx.AsyncClient() as client:
         reg_resp = await client.post(
             "https://api.elevenlabs.io/v1/convai/twilio/register-call",
