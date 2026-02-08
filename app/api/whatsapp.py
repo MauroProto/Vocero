@@ -67,7 +67,11 @@ def _handle_intent(state: ConversationState, result: IntentResult) -> None:
             state.provider_phone = result.entities.phone_number
         if result.entities.provider_name:
             state.provider_name = result.entities.provider_name
-        _prepare_for_new_call(state)
+        # Only call immediately if we know what the user needs
+        if result.entities.service_type:
+            _prepare_for_new_call(state)
+        else:
+            state.status = ConversationStatus.AWAITING_PROVIDER
 
     elif result.intent == IntentType.REQUEST_APPOINTMENT:
         state.pending_intent = IntentType.REQUEST_APPOINTMENT
@@ -378,19 +382,24 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
             state.provider_name = contact.name
             state.updated_at = datetime.now(timezone.utc)
 
-            # Always trigger a call when user shares a contact — they clearly want to call
-            _prepare_for_new_call(state)
-            reason = (
-                state.pending_entities.service_type
-                if state.pending_entities and state.pending_entities.service_type
-                else None
-            )
-            lang = state.language.value
-            if reason:
+            # Check if we already know what the user needs
+            has_context = state.pending_entities and state.pending_entities.service_type
+            if has_context:
+                _prepare_for_new_call(state)
+                reason = state.pending_entities.service_type
                 msg = f"Dale, ya llamo a *{contact.name or contact.phone}* por lo de {reason}!"
+                await _send_and_track(state, from_number, msg)
             else:
-                msg = f"Dale, ya llamo a *{contact.name or contact.phone}*!"
-            await _send_and_track(state, from_number, msg)
+                # Don't call blindly — ask what they need first
+                state.status = ConversationStatus.AWAITING_PROVIDER
+                state.pending_intent = IntentType.CALL_NUMBER
+                lang = state.language.value
+                name = contact.name or contact.phone
+                if lang == "es":
+                    msg = f"Tengo el numero de *{name}*. Que necesitas que le diga? (ej: reservar turno de corte para mañana a las 10)"
+                else:
+                    msg = f"Got *{name}*'s number. What do you need me to tell them? (e.g., book a haircut for tomorrow at 10)"
+                await _send_and_track(state, from_number, msg)
         else:
             await send_whatsapp_message(
                 from_number, "No pude leer el contacto. Mandame el numero como texto."

@@ -130,7 +130,7 @@ async def call_status_callback(request: Request):
                         if best_booked.get("phone"):
                             cal_desc_parts.append(f"Tel: {best_booked['phone']}")
                         cal_desc_parts.append("Reservado por Vocero")
-                        cal_link = await build_calendar_link(
+                        cal_link = build_calendar_link(
                             summary=cal_title,
                             start_date=s.date,
                             start_time=s.time,
@@ -165,7 +165,7 @@ async def call_status_callback(request: Request):
                         if state.provider_phone:
                             cal_desc_parts.append(f"Tel: {state.provider_phone}")
                         cal_desc_parts.append("Reservado por Vocero")
-                        cal_link = await build_calendar_link(
+                        cal_link = build_calendar_link(
                             summary=cal_title,
                             start_date=summary_result.date,
                             start_time=summary_result.time,
