@@ -12,7 +12,6 @@ class ConversationStatus(StrEnum):
     IDLE = "idle"
     AWAITING_PROVIDER = "awaiting_provider"
     CALLING = "calling"
-    AWAITING_USER_DECISION = "awaiting_user_decision"
     COMPLETED = "completed"
 
 
@@ -22,12 +21,14 @@ class ConversationState:
     pending_intent: IntentType | None = None
     pending_entities: Entities | None = None
     language: Language = Language.ES
+    user_name: str | None = None
     provider_phone: str | None = None
     provider_name: str | None = None
     active_call_ids: list[str] = field(default_factory=list)
     call_results: list[dict] = field(default_factory=list)
     last_bot_message: str | None = None
     message_history: list[str] = field(default_factory=list)
+    search_results: list | None = None
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 

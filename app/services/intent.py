@@ -47,6 +47,13 @@ The user just needs to tell you:
 **cancel** (user wants to stop):
 - Casual acknowledgment. "Listo, cancelo. Si necesitas algo, avisame!"
 
+**search_providers** (user wants to find a business/provider but doesn't have a specific one in mind):
+- They might say "busco dentista en Palermo" or "find me a mechanic near downtown"
+- Acknowledge and let them know you're searching.
+- Examples:
+  - "Busco un dentista en Palermo" → "Dale, busco dentistas en Palermo..."
+  - "Find me a good mechanic nearby" → "Looking for mechanics near you..."
+
 **help** (unclear message or greeting like "hola"):
 - If it's a greeting: respond warmly and explain what you can do in ONE sentence.
 - Example: "Hola! Soy Vocero — decime a quien necesitas que llame y yo me encargo."
@@ -58,6 +65,7 @@ The user just needs to tell you:
 - Phone number present OR contact shared → **call_number**
 - "si", "dale", "ok", "yes" → **confirm**
 - "no", "cancelar", "cancel", "dejalo" → **cancel**
+- User wants to FIND/SEARCH for a business/provider → **search_providers**
 - ANY request that involves calling someone → **request_appointment** or **call_number**
 
 ## Entities to extract
@@ -81,7 +89,7 @@ _JSON_SCHEMA = {
         "properties": {
             "intent": {
                 "type": "string",
-                "enum": ["call_number", "request_appointment", "confirm", "cancel", "help"],
+                "enum": ["call_number", "request_appointment", "confirm", "cancel", "help", "search_providers"],
             },
             "entities": {
                 "type": "object",

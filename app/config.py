@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from_email: str = "vocero@yourdomain.com"
 
+    # Google Places
+    google_places_api_key: str = ""
+
     # App
     app_base_url: str = "http://localhost:8000"
     debug: bool = True

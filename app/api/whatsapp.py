@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.config import settings
-from app.schemas.intent import IntentResult, IntentType
+from app.schemas.intent import IntentResult, IntentType, Language
 from app.services.elevenlabs_call import make_outbound_call
 from app.services.intent import extract_intent
-from app.services.messages import format_call_failed, format_calling_message
+from app.services.messages import format_call_failed, format_calling_message, format_search_results
+from app.services.places import search_places
 from app.services.state import (
     ConversationState,
     ConversationStatus,
@@ -78,7 +79,12 @@ def _handle_intent(state: ConversationState, result: IntentResult) -> None:
         state.pending_entities = None
         state.provider_phone = None
         state.provider_name = None
+        state.search_results = None
         state.active_call_ids.clear()
+
+    elif result.intent == IntentType.SEARCH_PROVIDERS:
+        state.pending_intent = IntentType.SEARCH_PROVIDERS
+        state.status = ConversationStatus.AWAITING_PROVIDER
 
 
 async def _send_and_track(state: ConversationState, from_number: str, msg: str) -> None:
@@ -122,15 +128,17 @@ async def _trigger_call(from_number: str, state: ConversationState) -> None:
     entities = state.pending_entities
 
     dynamic_vars: dict[str, str] = {"language": lang}
+    if state.user_name:
+        dynamic_vars["user_name"] = state.user_name
     if state.provider_name:
         dynamic_vars["provider_name"] = state.provider_name
     if entities:
         if entities.service_type:
             dynamic_vars["service_type"] = entities.service_type
         if entities.date_preference:
-            dynamic_vars["date_preference"] = entities.date_preference
+            dynamic_vars["preferred_date"] = entities.date_preference
         if entities.time_preference:
-            dynamic_vars["time_preference"] = entities.time_preference
+            dynamic_vars["preferred_time"] = entities.time_preference
         if entities.special_requests:
             dynamic_vars["special_requests"] = entities.special_requests
 
@@ -195,12 +203,58 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
         reset_state(from_number)
         state = get_state(from_number)
 
+    # Store user's WhatsApp profile name
+    if profile_name and not state.user_name:
+        state.user_name = profile_name
+
     logger.info(
         "WhatsApp from %s (%s): type=%s state=%s",
         from_number, profile_name, msg_type, state.status,
     )
 
     context = build_context(state)
+
+    # Handle search result selection
+    if state.status == ConversationStatus.AWAITING_PROVIDER and state.search_results and msg_type == "text":
+        body = message.get("text", {}).get("body", "").strip()
+        if body.isdigit():
+            idx = int(body) - 1
+            if 0 <= idx < len(state.search_results):
+                selected = state.search_results[idx]
+                state.provider_name = selected.name
+                state.provider_phone = selected.phone
+                state.search_results = None
+                state.updated_at = datetime.now(timezone.utc)
+                if selected.phone:
+                    _prepare_for_new_call(state)
+                    lang = state.language.value
+                    reason = (
+                        state.pending_entities.service_type
+                        if state.pending_entities and state.pending_entities.service_type
+                        else None
+                    )
+                    if reason:
+                        msg = f"Dale, ya llamo a *{selected.name}* por lo de {reason}!"
+                    else:
+                        msg = f"Dale, ya llamo a *{selected.name}*!"
+                    await _send_and_track(state, from_number, msg)
+                else:
+                    await send_whatsapp_message(
+                        from_number,
+                        "Ese lugar no tiene telefono en Google. Pasame el numero como texto."
+                        if state.language == Language.ES
+                        else "That place doesn't have a phone number on Google. Send me the number as text."
+                    )
+                # Skip normal processing — we handled it
+                if state.status == ConversationStatus.CALLING and state.provider_phone and not state.active_call_ids:
+                    await _trigger_call(from_number, state)
+                return
+            else:
+                n = len(state.search_results)
+                lang = state.language.value
+                oob_msg = f"Elegi un numero del 1 al {n}." if lang == "es" else f"Pick a number from 1 to {n}."
+                await send_whatsapp_message(from_number, oob_msg)
+                return
 
     if msg_type == "contacts":
         contact = _parse_meta_contact(message)
@@ -234,6 +288,16 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
         try:
             result = await extract_intent(body, context=context)
             await _process_intent(state, result, from_number)
+            if result.intent == IntentType.SEARCH_PROVIDERS and result.entities.location:
+                query = f"{result.entities.service_type or ''} {result.entities.location}".strip()
+                if query:
+                    try:
+                        results = await search_places(query)
+                        state.search_results = results
+                        msg = format_search_results(results, language=state.language.value)
+                        await _send_and_track(state, from_number, msg)
+                    except Exception:
+                        logger.exception("Places search failed")
         except Exception:
             logger.exception("Intent parsing failed")
             await send_whatsapp_message(from_number, "Perdon, tuve un error. Intenta de nuevo.")
@@ -247,6 +311,16 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
                 add_message(state, "user", f"[audio] {transcription.text}")
                 result = await extract_intent(transcription.text, context=context)
                 await _process_intent(state, result, from_number)
+                if result.intent == IntentType.SEARCH_PROVIDERS and result.entities.location:
+                    query = f"{result.entities.service_type or ''} {result.entities.location}".strip()
+                    if query:
+                        try:
+                            results = await search_places(query)
+                            state.search_results = results
+                            msg = format_search_results(results, language=state.language.value)
+                            await _send_and_track(state, from_number, msg)
+                        except Exception:
+                            logger.exception("Places search failed")
             except Exception:
                 logger.exception("Failed to process voice note")
                 await send_whatsapp_message(

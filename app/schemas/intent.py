@@ -9,6 +9,7 @@ class IntentType(StrEnum):
     CONFIRM = "confirm"
     CANCEL = "cancel"
     HELP = "help"
+    SEARCH_PROVIDERS = "search_providers"
 
 
 class Language(StrEnum):

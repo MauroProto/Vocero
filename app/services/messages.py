@@ -60,3 +60,34 @@ def format_call_failed(provider_name: str | None, language: str = "es") -> str:
     if language == "es":
         return f"No pude completar la llamada a *{name}*. Queres que intente de nuevo?"
     return f"Couldn't complete the call to *{name}*. Want me to try again?"
+
+
+def format_search_results(results: list, language: str = "es") -> str:
+    """Format Google Places search results as a numbered WhatsApp message."""
+    if not results:
+        if language == "es":
+            return "No encontre resultados. Intenta con otra busqueda."
+        return "No results found. Try a different search."
+
+    if language == "es":
+        lines = ["Encontre estos resultados:\n"]
+    else:
+        lines = ["Here are the results:\n"]
+
+    for i, r in enumerate(results, 1):
+        parts = [f"*{i}. {r.name}*"]
+        if r.rating:
+            stars = round(r.rating, 1)
+            parts.append(f"  Rating: {stars} ({r.total_ratings} reviews)")
+        if r.address:
+            parts.append(f"  {r.address}")
+        if r.phone:
+            parts.append(f"  Tel: {r.phone}")
+        lines.append("\n".join(parts))
+
+    if language == "es":
+        lines.append("\nResponde con el *numero* para llamar.")
+    else:
+        lines.append("\nReply with the *number* to call.")
+
+    return "\n\n".join(lines)

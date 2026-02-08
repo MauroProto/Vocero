@@ -118,5 +118,13 @@
     "requires_planning": true,
     "tests": "Send Spanish voice note → transcribed in Spanish → agent calls in Spanish → results in Spanish. Send English text → agent calls in English → results in English.",
     "status": false
+  },
+  {
+    "id": "google_places_search",
+    "name": "Google Places Search",
+    "description": "Search for service providers via Google Places API (New). User says 'busco dentista en Palermo' → intent parsed as search_providers → Google Places Text Search → formatted results sent via WhatsApp → user picks a number → call triggers. Supports bilingual results.",
+    "requires_planning": false,
+    "tests": "Send 'busco dentista en Palermo' → get numbered list of results with name, rating, address, phone. Reply with '1' → call triggers to that provider.",
+    "status": true
   }
 ]
