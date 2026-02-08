@@ -20,11 +20,26 @@ class PlaceResult:
     place_id: str
 
 
-async def search_places(query: str, max_results: int = 5) -> list[PlaceResult]:
+async def search_places(
+    query: str,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    radius: float = 5000.0,
+    max_results: int = 5,
+) -> list[PlaceResult]:
     """Search Google Places API (New) for businesses matching the query."""
     if not settings.google_places_api_key:
         logger.warning("Google Places API key not configured")
         return []
+
+    request_body: dict = {"textQuery": query, "maxResultCount": max_results}
+    if latitude is not None and longitude is not None:
+        request_body["locationBias"] = {
+            "circle": {
+                "center": {"latitude": latitude, "longitude": longitude},
+                "radius": radius,
+            }
+        }
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -34,7 +49,7 @@ async def search_places(query: str, max_results: int = 5) -> list[PlaceResult]:
                 "X-Goog-Api-Key": settings.google_places_api_key,
                 "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.internationalPhoneNumber,places.rating,places.userRatingCount,places.id",
             },
-            json={"textQuery": query, "maxResultCount": max_results},
+            json=request_body,
             timeout=10.0,
         )
         resp.raise_for_status()

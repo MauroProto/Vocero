@@ -396,6 +396,44 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
                 from_number, "No pude leer el contacto. Mandame el numero como texto."
             )
 
+    elif msg_type == "location":
+        loc = message.get("location", {})
+        lat = loc.get("latitude")
+        lng = loc.get("longitude")
+        loc_name = loc.get("name", "")
+        loc_address = loc.get("address", "")
+
+        if lat is not None and lng is not None:
+            state.user_latitude = float(lat)
+            state.user_longitude = float(lng)
+            state.updated_at = datetime.now(timezone.utc)
+
+            # If awaiting a search, auto-trigger with the location
+            if (
+                state.status == ConversationStatus.AWAITING_PROVIDER
+                and state.pending_intent == IntentType.SEARCH_PROVIDERS
+                and state.pending_entities
+            ):
+                service = state.pending_entities.service_type or ""
+                location_hint = loc_name or loc_address or ""
+                query = f"{service} {location_hint}".strip() or service
+                if query:
+                    try:
+                        results = await search_places(
+                            query,
+                            latitude=state.user_latitude,
+                            longitude=state.user_longitude,
+                        )
+                        state.search_results = results
+                        msg = format_search_results(results, language=state.language.value)
+                        await _send_and_track(state, from_number, msg)
+                    except Exception:
+                        logger.exception("Places search failed after location share")
+            else:
+                lang = state.language.value
+                ack = "Listo, tengo tu ubicacion." if lang == "es" else "Got your location."
+                await _send_and_track(state, from_number, ack)
+
     elif msg_type == "text":
         body = message.get("text", {}).get("body", "")
         logger.info("Text body: %s", body[:100] if body else "<empty>")
@@ -403,11 +441,15 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
         try:
             result = await extract_intent(body, context=context)
             await _process_intent(state, result, from_number)
-            if result.intent == IntentType.SEARCH_PROVIDERS and result.entities.location:
+            if result.intent == IntentType.SEARCH_PROVIDERS and result.entities.location and result.confidence >= 0.8:
                 query = f"{result.entities.service_type or ''} {result.entities.location}".strip()
                 if query:
                     try:
-                        results = await search_places(query)
+                        results = await search_places(
+                            query,
+                            latitude=state.user_latitude,
+                            longitude=state.user_longitude,
+                        )
                         state.search_results = results
                         msg = format_search_results(results, language=state.language.value)
                         await _send_and_track(state, from_number, msg)
@@ -426,11 +468,15 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
                 add_message(state, "user", f"[audio] {transcription.text}")
                 result = await extract_intent(transcription.text, context=context)
                 await _process_intent(state, result, from_number)
-                if result.intent == IntentType.SEARCH_PROVIDERS and result.entities.location:
+                if result.intent == IntentType.SEARCH_PROVIDERS and result.entities.location and result.confidence >= 0.8:
                     query = f"{result.entities.service_type or ''} {result.entities.location}".strip()
                     if query:
                         try:
-                            results = await search_places(query)
+                            results = await search_places(
+                                query,
+                                latitude=state.user_latitude,
+                                longitude=state.user_longitude,
+                            )
                             state.search_results = results
                             msg = format_search_results(results, language=state.language.value)
                             await _send_and_track(state, from_number, msg)

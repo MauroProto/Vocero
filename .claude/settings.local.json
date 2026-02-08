@@ -42,7 +42,9 @@
       "Bash(ngrok config add-authtoken:*)",
       "Bash(pkill:*)",
       "Bash(kill:*)",
-      "WebFetch(domain:json2video.com)"
+      "WebFetch(domain:json2video.com)",
+      "WebFetch(domain:developers.facebook.com)",
+      "WebFetch(domain:developers.google.com)"
     ]
   },
   "enableAllProjectMcpServers": true,
