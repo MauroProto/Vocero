@@ -434,9 +434,7 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
                 and state.pending_intent == IntentType.SEARCH_PROVIDERS
                 and state.pending_entities
             ):
-                service = state.pending_entities.service_type or ""
-                location_hint = loc_name or loc_address or ""
-                query = f"{service} {location_hint}".strip() or service
+                query = state.pending_entities.service_type or ""
                 if query:
                     try:
                         results = await search_places(

@@ -46,7 +46,13 @@
       "WebFetch(domain:developers.facebook.com)",
       "WebFetch(domain:developers.google.com)",
       "Bash(git -C /Users/mauro/Desktop/proyectos/vocero check-ignore trvl-471903-21fc5c9bfc6c.json)",
-      "Bash(git -C /Users/mauro/Desktop/proyectos/vocero ls-files:*)"
+      "Bash(git -C /Users/mauro/Desktop/proyectos/vocero ls-files:*)",
+      "Bash(npx create-video@latest:*)",
+      "Bash(printf:*)",
+      "Bash(expect:*)",
+      "WebFetch(domain:www.remotion.dev)",
+      "WebFetch(domain:www.gregceccarelli.com)",
+      "Bash(gh repo view:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
