@@ -195,12 +195,6 @@ DEBUG=true
 
 <br>
 
-## License
-
-MIT
-
-<br>
-
 ---
 
 <div align="center">
