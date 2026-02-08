@@ -11,6 +11,7 @@
 - **WhatsApp:** Meta Cloud API (send/receive messages, media download)
 - **Telephony:** Twilio (outbound PSTN calls via ElevenLabs integration)
 - **Email:** Resend (call transcript delivery)
+- **Calendar:** Google Calendar API (service account auth, auto-create events on booking)
 - **Deps:** pip + requirements.txt
 
 ### Two-Agent Architecture
@@ -23,6 +24,13 @@
 3. We create a Twilio call with that TwiML
 4. Twilio connects **directly** to ElevenLabs — no manual audio bridge needed
 5. ElevenLabs handles audio format natively (mulaw 8kHz for Twilio)
+
+### Post-Call Processing
+1. Twilio sends `completed` status → `callbacks.py`
+2. We fetch conversation details from ElevenLabs
+3. GPT analyzes transcript → returns structured JSON (`SmartSummaryResult`): summary_text + booking data (date, time, provider, etc.)
+4. If `booking_confirmed == true`: `calendar.py` creates Google Calendar event via service account
+5. WhatsApp message includes summary + "Agregado al calendario" if event was created
 
 ### Repo Structure
 ```
@@ -44,7 +52,8 @@ Vocero/
 │   │   ├── elevenlabs_call.py # Outbound calls: register-call + Twilio create call
 │   │   ├── intent.py        # NLU intent extraction (OpenAI)
 │   │   ├── transcription.py # Voice note STT (ElevenLabs Scribe)
-│   │   ├── messages.py      # Formatted WhatsApp message templates (EN/ES)
+│   │   ├── messages.py      # Formatted WhatsApp message templates (EN/ES) + structured summary
+│   │   ├── calendar.py      # Google Calendar: service account JWT auth + event creation
 │   │   ├── state.py         # In-memory conversation state machine
 │   │   └── contact.py       # Contact/vCard parsing
 │   └── db/                  # Database engine + session management
@@ -69,6 +78,7 @@ Vocero/
 6. Agent calls server tools (`/api/tools/*`) mid-conversation for slot reporting/booking.
 7. Real-time WhatsApp updates: "Calling...", "Has availability!", "Booking confirmed!".
 8. Results sent back as structured WhatsApp message. Transcript emailable via Resend.
+9. If booking confirmed: auto-creates Google Calendar event → WhatsApp says "Agregado al calendario".
 
 **Domain Rules:**
 - One user can have multiple active appointment requests.
@@ -90,6 +100,12 @@ ngrok http 8000                  # Expose for Meta webhook
 - Set ngrok URL as webhook in Meta Developers → WhatsApp → Configuration.
 - Webhook verify token: `vocero_verify`
 - Subscribe to `messages` field in Meta webhook config.
+- **Google Calendar setup:**
+  1. Create Service Account in Google Cloud Console
+  2. Enable Google Calendar API
+  3. Download JSON key → `service-account.json` in project root
+  4. Share target calendar with the service account email (editor permissions)
+  5. Set `GOOGLE_SERVICE_ACCOUNT_FILE=service-account.json` and `GOOGLE_CALENDAR_ID=primary` in `.env`
 
 ### Key API Routes
 | Method | Path | Purpose |
