@@ -121,12 +121,22 @@ async def call_status_callback(request: Request):
                     )
                     if best_booked and best_booked["summary"].date and best_booked["summary"].time:
                         s = best_booked["summary"]
+                        provider = s.provider_name or best_booked["provider_name"]
+                        service = s.service_description or "Turno"
+                        cal_title = f"{service} - {provider}"
+                        cal_desc_parts = []
+                        if s.notes:
+                            cal_desc_parts.append(s.notes)
+                        if best_booked.get("phone"):
+                            cal_desc_parts.append(f"Tel: {best_booked['phone']}")
+                        cal_desc_parts.append("Reservado por Vocero")
                         cal_link = await build_calendar_link(
-                            summary=f"Turno: {s.provider_name or best_booked['provider_name']}",
+                            summary=cal_title,
                             start_date=s.date,
                             start_time=s.time,
                             duration_minutes=s.duration_minutes or 60,
                             location=s.address,
+                            description="\n".join(cal_desc_parts),
                         )
                         if lang == "es":
                             await send_whatsapp_message(phone, f"Agrega el turno a tu calendario: {cal_link}")
@@ -146,12 +156,22 @@ async def call_status_callback(request: Request):
 
                     # Calendar link as separate message after summary
                     if summary_result.booking_confirmed and summary_result.date and summary_result.time:
+                        provider = summary_result.provider_name or display_name
+                        service = summary_result.service_description or "Turno"
+                        cal_title = f"{service} - {provider}"
+                        cal_desc_parts = []
+                        if summary_result.notes:
+                            cal_desc_parts.append(summary_result.notes)
+                        if state.provider_phone:
+                            cal_desc_parts.append(f"Tel: {state.provider_phone}")
+                        cal_desc_parts.append("Reservado por Vocero")
                         cal_link = await build_calendar_link(
-                            summary=f"Turno: {summary_result.provider_name or display_name}",
+                            summary=cal_title,
                             start_date=summary_result.date,
                             start_time=summary_result.time,
                             duration_minutes=summary_result.duration_minutes or 60,
                             location=summary_result.address,
+                            description="\n".join(cal_desc_parts),
                         )
                         cal_msg = (
                             f"Agrega el turno a tu calendario: {cal_link}"
