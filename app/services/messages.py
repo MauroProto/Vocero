@@ -90,7 +90,7 @@ async def generate_smart_summary(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                "max_tokens": 300,
+                "max_completion_tokens": 300,
                 "temperature": 0.3,
             },
         )
