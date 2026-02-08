@@ -44,7 +44,9 @@
       "Bash(kill:*)",
       "WebFetch(domain:json2video.com)",
       "WebFetch(domain:developers.facebook.com)",
-      "WebFetch(domain:developers.google.com)"
+      "WebFetch(domain:developers.google.com)",
+      "Bash(git -C /Users/mauro/Desktop/proyectos/vocero check-ignore trvl-471903-21fc5c9bfc6c.json)",
+      "Bash(git -C /Users/mauro/Desktop/proyectos/vocero ls-files:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

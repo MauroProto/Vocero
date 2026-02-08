@@ -3,7 +3,7 @@ import logging
 
 from fastapi import APIRouter, Request
 
-from app.services.calendar import create_calendar_event
+from app.services.calendar import build_calendar_link
 from app.services.elevenlabs_call import fetch_conversation_details, pop_call
 from app.services.messages import format_call_failed, format_multi_call_update, format_ranked_results, format_summary_message, generate_smart_summary
 from app.services.ranking import rank_results
@@ -114,46 +114,51 @@ async def call_status_callback(request: Request):
                     msg = format_ranked_results(ranked, language=lang)
                     await send_whatsapp_message(phone, msg)
 
-                    # Calendar for best confirmed booking
+                    # Calendar link for best confirmed booking
                     best_booked = next(
                         (r for r in ranked if r.get("summary") and r["summary"].booking_confirmed),
                         None,
                     )
                     if best_booked and best_booked["summary"].date and best_booked["summary"].time:
                         s = best_booked["summary"]
-                        event_summary = f"Turno: {s.provider_name or best_booked['provider_name']}"
-                        await create_calendar_event(
-                            summary=event_summary,
+                        cal_link = await build_calendar_link(
+                            summary=f"Turno: {s.provider_name or best_booked['provider_name']}",
                             start_date=s.date,
                             start_time=s.time,
                             duration_minutes=s.duration_minutes or 60,
                             location=s.address,
-                            description=s.notes,
                         )
+                        if lang == "es":
+                            await send_whatsapp_message(phone, f"Agrega el turno a tu calendario: {cal_link}")
+                        else:
+                            await send_whatsapp_message(phone, f"Add the appointment to your calendar: {cal_link}")
 
                     state.status = ConversationStatus.COMPLETED
                     state.multi_call = None
             else:
                 # --- Single-call flow ---
+                display_name = state.provider_name or state.provider_phone or "?"
                 if conv_data:
-                    summary_result = await generate_smart_summary(state.provider_name, state.provider_phone, conv_data, language=lang)
+                    summary_result = await generate_smart_summary(display_name, state.provider_phone, conv_data, language=lang)
 
-                    # Create calendar event if booking was confirmed
-                    calendar_added = False
+                    msg = format_summary_message(summary_result, display_name, language=lang)
+                    await send_whatsapp_message(phone, msg)
+
+                    # Calendar link as separate message after summary
                     if summary_result.booking_confirmed and summary_result.date and summary_result.time:
-                        event_summary = f"Turno: {summary_result.provider_name or state.provider_name}"
-                        link = await create_calendar_event(
-                            summary=event_summary,
+                        cal_link = await build_calendar_link(
+                            summary=f"Turno: {summary_result.provider_name or display_name}",
                             start_date=summary_result.date,
                             start_time=summary_result.time,
                             duration_minutes=summary_result.duration_minutes or 60,
                             location=summary_result.address,
-                            description=summary_result.notes,
                         )
-                        calendar_added = link is not None
-
-                    msg = format_summary_message(summary_result, state.provider_name, language=lang, calendar_added=calendar_added)
-                    await send_whatsapp_message(phone, msg)
+                        cal_msg = (
+                            f"Agrega el turno a tu calendario: {cal_link}"
+                            if lang == "es"
+                            else f"Add the appointment to your calendar: {cal_link}"
+                        )
+                        await send_whatsapp_message(phone, cal_msg)
                     state.call_results.append({
                         "provider": state.provider_name,
                         "outcome": "completed",

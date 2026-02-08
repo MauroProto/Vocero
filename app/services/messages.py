@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from datetime import date
 
 import httpx
 
@@ -33,6 +34,8 @@ Rules for booking fields:
 - date format: YYYY-MM-DD. time format: HH:MM (24h).
 - If no booking was confirmed, set booking_confirmed to false and leave other booking fields null.
 - duration_minutes: estimate based on the service type if not explicitly stated (default 60).
+- service_description: short label of what was booked, e.g. "Corte de pelo con Juan", "Consulta médica", "Revisión del auto". Do NOT include date/time here.
+- notes: any extra useful info for the user (cost, what to bring, instructions). Keep it factual and short. Do NOT include internal reasoning or analysis.
 """
 
 _SUMMARY_SCHEMA = {
@@ -40,14 +43,15 @@ _SUMMARY_SCHEMA = {
     "properties": {
         "summary_text": {"type": "string", "description": "WhatsApp summary message"},
         "booking_confirmed": {"type": "boolean"},
-        "date": {"type": ["string", "null"], "description": "YYYY-MM-DD or null"},
-        "time": {"type": ["string", "null"], "description": "HH:MM 24h or null"},
-        "duration_minutes": {"type": ["integer", "null"]},
-        "provider_name": {"type": ["string", "null"]},
-        "address": {"type": ["string", "null"]},
-        "notes": {"type": ["string", "null"]},
+        "date": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "YYYY-MM-DD or null"},
+        "time": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "HH:MM 24h or null"},
+        "duration_minutes": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        "provider_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "address": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "service_description": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Short label: Corte de pelo con Juan"},
+        "notes": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Extra info: cost, what to bring, etc."},
     },
-    "required": ["summary_text", "booking_confirmed"],
+    "required": ["summary_text", "booking_confirmed", "date", "time", "duration_minutes", "provider_name", "address", "service_description", "notes"],
     "additionalProperties": False,
 }
 
@@ -62,6 +66,7 @@ class SmartSummaryResult:
     duration_minutes: int | None = None
     provider_name: str | None = None
     address: str | None = None
+    service_description: str | None = None
     notes: str | None = None
 
 
@@ -74,7 +79,7 @@ def _get_client() -> httpx.AsyncClient:
                 "Authorization": f"Bearer {settings.openai_api_key}",
                 "Content-Type": "application/json",
             },
-            timeout=15.0,
+            timeout=60.0,
         )
     return _client
 
@@ -117,34 +122,41 @@ async def generate_smart_summary(
     language_name = "Spanish" if language == "es" else "English"
     system_prompt = _SUMMARY_PROMPT.format(language_name=language_name, language_code=language)
 
-    user_content = f"Provider called: {name}\n\nFull transcript:\n{transcript_text}"
+    today = date.today().isoformat()
+    user_content = f"Today's date: {today}\nProvider called: {name}\n\nFull transcript:\n{transcript_text}"
 
-    client = _get_client()
-    try:
-        resp = await client.post(
-            "/chat/completions",
-            json={
-                "model": "gpt-5.2",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
-                "max_completion_tokens": 500,
-                "temperature": 0.3,
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "call_summary",
-                        "strict": True,
-                        "schema": _SUMMARY_SCHEMA,
-                    },
-                },
+    request_body = {
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        "max_completion_tokens": 500,
+        "temperature": 0.3,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "call_summary",
+                "strict": True,
+                "schema": _SUMMARY_SCHEMA,
             },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        raw = json.loads(data["choices"][0]["message"]["content"])
+        },
+    }
 
+    # Try gpt-5.2 first, fall back to gpt-4.1-mini if it fails
+    client = _get_client()
+    raw = None
+    for model in ("gpt-5.2", "gpt-4.1-mini"):
+        try:
+            request_body["model"] = model
+            resp = await client.post("/chat/completions", json=request_body)
+            resp.raise_for_status()
+            data = resp.json()
+            raw = json.loads(data["choices"][0]["message"]["content"])
+            break
+        except Exception:
+            logger.exception("Summary failed with %s", model)
+
+    if raw and raw.get("summary_text"):
         return SmartSummaryResult(
             summary_text=raw["summary_text"],
             booking_confirmed=raw.get("booking_confirmed", False),
@@ -153,62 +165,37 @@ async def generate_smart_summary(
             duration_minutes=raw.get("duration_minutes"),
             provider_name=raw.get("provider_name") or name,
             address=raw.get("address"),
+            service_description=raw.get("service_description"),
             notes=raw.get("notes"),
         )
 
-    except Exception:
-        logger.exception("Failed to generate smart summary, falling back to basic")
-        fallback = _format_basic_summary(name, conversation_data, language)
-        return SmartSummaryResult(summary_text=fallback, booking_confirmed=False)
+    # Last resort: clean message, never garbage
+    if language == "es":
+        fallback = "La llamada termino. Pedime *\"transcript\"* para ver que se hablo."
+    else:
+        fallback = "The call ended. Send *\"transcript\"* to see what was discussed."
+    return SmartSummaryResult(summary_text=fallback, booking_confirmed=False)
 
 
-def format_summary_message(result: SmartSummaryResult, provider_name: str, language: str = "es", calendar_added: bool = False) -> str:
+def format_summary_message(result: SmartSummaryResult, provider_name: str, language: str = "es") -> str:
     """Build the final WhatsApp message from a SmartSummaryResult."""
     name = provider_name or "?"
     if language == "es":
         lines = [
             f"Llamada con *{name}* finalizada.\n",
             result.summary_text,
+            "\nPedime *\"transcript\"* si queres ver la conversacion completa.",
         ]
-        if calendar_added:
-            lines.append("\nAgregado al calendario.")
-        lines.append("\nPedime *\"transcript\"* si queres ver la conversacion completa.")
     else:
         lines = [
             f"Call with *{name}* finished.\n",
             result.summary_text,
+            "\nSend *\"transcript\"* if you want the full conversation.",
         ]
-        if calendar_added:
-            lines.append("\nAdded to calendar.")
-        lines.append("\nSend *\"transcript\"* if you want the full conversation.")
     return "\n".join(lines)
 
 
-def _format_basic_summary(name: str, conversation_data: dict, language: str) -> str:
-    """Fallback summary when LLM is unavailable."""
-    detail = _extract_last_substantive_message(conversation_data)
-    if language == "es":
-        lines = [f"Llamada con *{name}* finalizada."]
-        if detail:
-            lines.append(f"\n{detail}")
-        lines.append("\nPedime *\"transcript\"* si queres ver la conversacion completa.")
-    else:
-        lines = [f"Call with *{name}* finished."]
-        if detail:
-            lines.append(f"\n{detail}")
-        lines.append("\nSend *\"transcript\"* if you want the full conversation.")
-    return "\n".join(lines)
 
-
-def _extract_last_substantive_message(conversation_data: dict) -> str:
-    """Get the last substantive agent message as a basic fallback."""
-    transcript = conversation_data.get("transcript", [])
-    for entry in reversed(transcript):
-        msg = entry.get("message") or ""
-        msg = _clean_agent_text(msg)
-        if entry.get("role") == "agent" and len(msg) > 30:
-            return msg
-    return ""
 
 
 def format_calling_message(provider_name: str | None, phone: str, language: str = "es") -> str:

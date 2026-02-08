@@ -46,5 +46,9 @@ docker-compose.override.yml
 *.mp3
 *.wav
 
+# Google Service Account credentials (NEVER commit these)
+service-account*.json
+trvl-*.json
+
 # Claude Code
 .claude/
