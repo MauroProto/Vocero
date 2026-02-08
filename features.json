@@ -109,7 +109,7 @@
     "description": "Call 2-3 providers simultaneously. User shares multiple contacts or sends multiple numbers. For each, trigger independent outbound call via ElevenLabs API (each gets its own conversation_id). Aggregate results as calls complete using asyncio. Rank by: availability match (40%), earliest slot (30%), conversation signals (30%). Send ranked shortlist to user via WhatsApp. Respect ElevenLabs concurrency limits (~4 on free/starter plan). Stagger call initiation by ~1s (Twilio CPS limit).",
     "requires_planning": true,
     "tests": "User shares 3 contacts. Calls run in parallel. User receives ranked results.",
-    "status": false
+    "status": true
   },
   {
     "id": "multilingual_support",

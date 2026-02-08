@@ -17,15 +17,24 @@ from app.schemas.tools import (
 )
 from app.services.messages import (
     format_booking_confirmed,
+    format_multi_call_update,
     format_no_availability,
     format_slots_available,
 )
-from app.services.state import ConversationStatus, find_state_by_conversation_id
+from app.services.state import ConversationStatus, MultiCallCampaign, MultiCallProvider, find_state_by_conversation_id
 from app.services.twilio import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
+
+
+def _find_campaign_provider_by_conv(campaign: MultiCallCampaign, conversation_id: str) -> MultiCallProvider | None:
+    """Find which provider in a campaign owns a given conversation_id."""
+    for p in campaign.providers:
+        if conversation_id in (p.call_sid, p.conversation_id):
+            return p
+    return None
 
 
 @router.post("/report_available_slots")
@@ -37,7 +46,12 @@ async def report_available_slots(req: ReportSlotsRequest):
     if result:
         phone, state = result
         lang = state.language.value
-        msg = format_slots_available(state.provider_name, language=lang)
+        if state.multi_call:
+            provider = _find_campaign_provider_by_conv(state.multi_call, req.conversation_id)
+            name = provider.name if provider else state.provider_name
+            msg = format_multi_call_update(name, "has_slots", language=lang)
+        else:
+            msg = format_slots_available(state.provider_name, language=lang)
         await send_whatsapp_message(phone, msg)
 
     return {"status": "ok", "slots_received": len(req.slots)}
@@ -81,14 +95,21 @@ async def confirm_booking(req: ConfirmBookingRequest):
         phone, state = result
         lang = state.language.value
         provider = req.provider_name or state.provider_name
-        msg = format_booking_confirmed(
-            provider_name=provider,
-            date_time=date_time,
-            notes=req.notes,
-            language=lang,
-        )
-        await send_whatsapp_message(phone, msg)
-        state.status = ConversationStatus.COMPLETED
+
+        if state.multi_call:
+            # Multi-call: brief update, don't mark COMPLETED
+            msg = format_multi_call_update(provider, "booked", language=lang)
+            await send_whatsapp_message(phone, msg)
+        else:
+            msg = format_booking_confirmed(
+                provider_name=provider,
+                date_time=date_time,
+                notes=req.notes,
+                language=lang,
+            )
+            await send_whatsapp_message(phone, msg)
+            state.status = ConversationStatus.COMPLETED
+
         state.call_results.append({
             "provider": provider,
             "datetime": date_time,
@@ -108,9 +129,17 @@ async def end_call_no_availability(req: EndCallRequest):
     if result:
         phone, state = result
         lang = state.language.value
-        msg = format_no_availability(state.provider_name, language=lang)
-        await send_whatsapp_message(phone, msg)
-        state.status = ConversationStatus.COMPLETED
+
+        if state.multi_call:
+            provider = _find_campaign_provider_by_conv(state.multi_call, req.conversation_id)
+            name = provider.name if provider else state.provider_name
+            msg = format_multi_call_update(name, "no_availability", language=lang)
+            await send_whatsapp_message(phone, msg)
+        else:
+            msg = format_no_availability(state.provider_name, language=lang)
+            await send_whatsapp_message(phone, msg)
+            state.status = ConversationStatus.COMPLETED
+
         state.call_results.append({
             "provider": state.provider_name,
             "outcome": "no_availability",

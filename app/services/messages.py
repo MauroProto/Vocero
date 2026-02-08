@@ -300,6 +300,94 @@ def format_transcript(
     return "\n".join(lines) if len(lines) > 1 else f"No hay transcript disponible para la llamada con *{name}*."
 
 
+def format_multi_call_start(count: int, language: str = "es") -> str:
+    """Message when starting parallel calls."""
+    if language == "es":
+        return f"Llamando a *{count}* proveedores en paralelo... Te aviso cuando tenga resultados."
+    return f"Calling *{count}* providers in parallel... I'll let you know when I have results."
+
+
+def format_multi_call_update(provider_name: str, outcome: str, language: str = "es") -> str:
+    """Brief WhatsApp update for a single provider during multi-call."""
+    name = provider_name or "?"
+    if outcome == "booked":
+        if language == "es":
+            return f"Turno con *{name}* asegurado!"
+        return f"Appointment with *{name}* booked!"
+    elif outcome == "has_slots":
+        if language == "es":
+            return f"*{name}* tiene disponibilidad!"
+        return f"*{name}* has availability!"
+    elif outcome == "no_availability":
+        if language == "es":
+            return f"*{name}* no tiene turnos."
+        return f"*{name}* has no slots."
+    else:  # failed, busy, no-answer
+        if language == "es":
+            return f"No pude comunicarme con *{name}*."
+        return f"Couldn't reach *{name}*."
+
+
+def format_ranked_results(ranked_results: list[dict], language: str = "es") -> str:
+    """Format consolidated multi-call results as a ranked WhatsApp message."""
+    n = len(ranked_results)
+    if language == "es":
+        lines = [f"*Resultados de {n} llamadas:*\n"]
+    else:
+        lines = [f"*Results from {n} calls:*\n"]
+
+    for i, r in enumerate(ranked_results, 1):
+        summary = r.get("summary")
+        name = r.get("provider_name", "?")
+        rating = r.get("rating")
+        total_ratings = r.get("total_ratings", 0)
+
+        # Status line
+        if summary and summary.booking_confirmed:
+            if language == "es":
+                status = "Turno confirmado!"
+            else:
+                status = "Booking confirmed!"
+        elif summary and (summary.date or summary.time):
+            if language == "es":
+                status = "Tiene disponibilidad"
+            else:
+                status = "Has availability"
+        elif r.get("outcome") in ("failed", "busy", "no-answer"):
+            if language == "es":
+                status = "No se pudo comunicar"
+            else:
+                status = "Couldn't connect"
+        else:
+            if language == "es":
+                status = "Sin disponibilidad"
+            else:
+                status = "No availability"
+
+        parts = [f"*{i}. {name}* — {status}"]
+
+        # Date/time if available
+        if summary and summary.date and summary.time:
+            if language == "es":
+                parts.append(f"   Fecha: {summary.date} {summary.time}")
+            else:
+                parts.append(f"   Date: {summary.date} {summary.time}")
+
+        # Summary text
+        if summary and summary.summary_text:
+            parts.append(f"   {summary.summary_text}")
+
+        # Rating
+        if rating:
+            stars = round(rating, 1)
+            review_text = f"({total_ratings} reviews)" if total_ratings else ""
+            parts.append(f"   Rating: {stars} {review_text}")
+
+        lines.append("\n".join(parts))
+
+    return "\n\n".join(lines)
+
+
 def format_search_results(results: list, language: str = "es") -> str:
     """Format Google Places search results as a numbered WhatsApp message."""
     if not results:
@@ -324,8 +412,8 @@ def format_search_results(results: list, language: str = "es") -> str:
         lines.append("\n".join(parts))
 
     if language == "es":
-        lines.append("\nResponde con el *numero* para llamar.")
+        lines.append("\nResponde con el *numero* para llamar, o *\"todos\"* para llamar a todos.")
     else:
-        lines.append("\nReply with the *number* to call.")
+        lines.append("\nReply with the *number* to call, or *\"all\"* to call them all.")
 
     return "\n\n".join(lines)

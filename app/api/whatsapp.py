@@ -9,11 +9,19 @@ from app.config import settings
 from app.schemas.intent import IntentResult, IntentType, Language
 from app.services.elevenlabs_call import fetch_conversation_details, make_outbound_call
 from app.services.intent import extract_intent
-from app.services.messages import format_call_failed, format_calling_message, format_search_results, format_transcript
+from app.services.messages import (
+    format_call_failed,
+    format_calling_message,
+    format_multi_call_start,
+    format_search_results,
+    format_transcript,
+)
 from app.services.places import search_places
 from app.services.state import (
     ConversationState,
     ConversationStatus,
+    MultiCallCampaign,
+    MultiCallProvider,
     add_message,
     build_context,
     get_state,
@@ -170,6 +178,92 @@ async def _trigger_call(from_number: str, state: ConversationState) -> None:
         state.status = ConversationStatus.IDLE
 
 
+async def _trigger_multi_call(from_number: str, state: ConversationState) -> None:
+    """Place parallel outbound calls to multiple providers from search results."""
+    if not state.search_results:
+        return
+
+    # Filter to providers with phone numbers, take first 3
+    candidates = [r for r in state.search_results if r.phone][:3]
+    if not candidates:
+        lang = state.language.value
+        msg = "Ninguno tiene telefono en Google." if lang == "es" else "None of them have a phone number on Google."
+        await send_whatsapp_message(from_number, msg)
+        return
+
+    providers = [
+        MultiCallProvider(
+            name=r.name,
+            phone=r.phone,
+            rating=r.rating,
+            total_ratings=r.total_ratings,
+        )
+        for r in candidates
+    ]
+    campaign = MultiCallCampaign(providers=providers, pending_count=len(providers))
+    state.multi_call = campaign
+    state.search_results = None
+    state.status = ConversationStatus.CALLING
+
+    lang = state.language.value
+    msg = format_multi_call_start(len(providers), language=lang)
+    await send_whatsapp_message(from_number, msg)
+
+    entities = state.pending_entities
+    dynamic_vars: dict[str, str] = {"language": lang}
+    if state.user_name:
+        dynamic_vars["user_name"] = state.user_name
+    if entities:
+        if entities.service_type:
+            dynamic_vars["service_type"] = entities.service_type
+        if entities.date_preference:
+            dynamic_vars["preferred_date"] = entities.date_preference
+        if entities.time_preference:
+            dynamic_vars["preferred_time"] = entities.time_preference
+        if entities.special_requests:
+            dynamic_vars["special_requests"] = entities.special_requests
+
+    for i, provider in enumerate(providers):
+        if i > 0:
+            await asyncio.sleep(1.5)  # Stagger for Twilio CPS
+
+        call_vars = {**dynamic_vars, "provider_name": provider.name}
+        try:
+            conversation_id, call_sid = await make_outbound_call(
+                to_number=provider.phone,
+                dynamic_variables=call_vars,
+                language=lang,
+            )
+            provider.conversation_id = conversation_id
+            provider.call_sid = call_sid
+            if conversation_id:
+                state.active_call_ids.append(conversation_id)
+            if call_sid:
+                state.active_call_ids.append(call_sid)
+            logger.info("Multi-call %d/%d: %s sid=%s conv=%s", i + 1, len(providers), provider.name, call_sid, conversation_id)
+        except Exception:
+            logger.exception("Failed to call %s", provider.name)
+            campaign.pending_count -= 1
+            campaign.results.append({
+                "provider_name": provider.name,
+                "phone": provider.phone,
+                "rating": provider.rating,
+                "total_ratings": provider.total_ratings,
+                "summary": None,
+                "outcome": "failed",
+            })
+
+    # If all calls failed immediately, send result now
+    if campaign.pending_count <= 0:
+        from app.services.ranking import rank_results
+        from app.services.messages import format_ranked_results
+        ranked = rank_results(campaign.results)
+        msg = format_ranked_results(ranked, language=lang)
+        await send_whatsapp_message(from_number, msg)
+        state.status = ConversationStatus.COMPLETED
+        state.multi_call = None
+
+
 def _parse_meta_contact(message: dict) -> ParsedContact | None:
     """Extract contact info from a Meta WhatsApp contacts message."""
     contacts = message.get("contacts", [])
@@ -231,6 +325,13 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
     # Handle search result selection
     if state.status == ConversationStatus.AWAITING_PROVIDER and state.search_results and msg_type == "text":
         body = message.get("text", {}).get("body", "").strip()
+        body_lower = body.lower()
+
+        # Check for "call all" trigger
+        if body_lower in ("todos", "all", "llama a todos", "llamalos", "call all", "call them all"):
+            asyncio.create_task(_trigger_multi_call(from_number, state))
+            return
+
         if body.isdigit():
             idx = int(body) - 1
             if 0 <= idx < len(state.search_results):

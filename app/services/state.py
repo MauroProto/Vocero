@@ -16,6 +16,23 @@ class ConversationStatus(StrEnum):
 
 
 @dataclass
+class MultiCallProvider:
+    name: str
+    phone: str
+    rating: float | None = None
+    total_ratings: int = 0
+    call_sid: str | None = None
+    conversation_id: str | None = None
+
+
+@dataclass
+class MultiCallCampaign:
+    providers: list[MultiCallProvider]
+    pending_count: int = 0
+    results: list[dict] = field(default_factory=list)
+
+
+@dataclass
 class ConversationState:
     status: ConversationStatus = ConversationStatus.IDLE
     pending_intent: IntentType | None = None
@@ -30,6 +47,7 @@ class ConversationState:
     message_history: list[str] = field(default_factory=list)
     search_results: list | None = None
     last_conversation_id: str | None = None
+    multi_call: MultiCallCampaign | None = None
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -54,6 +72,11 @@ def find_state_by_conversation_id(conversation_id: str) -> tuple[str, Conversati
     for phone, state in _conversations.items():
         if conversation_id in state.active_call_ids:
             return phone, state
+        # Also search multi-call campaign providers
+        if state.multi_call:
+            for provider in state.multi_call.providers:
+                if conversation_id in (provider.call_sid, provider.conversation_id):
+                    return phone, state
     return None
 
 

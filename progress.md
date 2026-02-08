@@ -52,3 +52,14 @@
   - **Phase 4 (Google Places):** Created `app/services/places.py` using Google Places API (New) Text Search. Added `SEARCH_PROVIDERS` intent. Updated intent parser with search description and classification rules. Created `format_search_results()` for formatted WhatsApp output. Handles search result selection by number → triggers call.
 - **Files changed:** `state.py`, `whatsapp.py`, `tools.py`, `intent.py`, `messages.py`, `config.py`, `intent.py` (schema), `tools.py` (schema), `.env.example`, `elevenlabs_agent_prompt.md`. New: `escalation.py`, `places.py`.
 - **Test:** Requires live testing: (1) Check logs for correct dynamic variables with `user_name`. (2) Copy new prompt to ElevenLabs → test call sounds natural. (3) Register `escalate_to_user` tool in ElevenLabs → test mid-call escalation. (4) Set `GOOGLE_PLACES_API_KEY` → "busco dentista en Palermo" returns results → pick one → call triggers.
+
+### 2026-02-07 — `multi_provider_calls`
+- **Summary:** Implemented "Swarm Mode" — parallel calls to up to 3 providers from Google Places search results. User triggers with "todos"/"all"/"llama a todos" after search results. System calls top 3 providers with phone numbers simultaneously (staggered 1.5s for Twilio CPS), collects results as calls complete, ranks by availability (40%) + earliest slot (30%) + Google rating (30%), sends consolidated WhatsApp summary. Calendar event auto-created for best confirmed booking.
+- **Changes:**
+  - `app/services/state.py`: Added `MultiCallProvider`, `MultiCallCampaign` dataclasses, `multi_call` field on `ConversationState`, updated `find_state_by_conversation_id()` to search campaign providers.
+  - `app/api/whatsapp.py`: Added "todos"/"all" trigger detection before digit check in search result selection. New `_trigger_multi_call()` function places parallel calls with staggered timing.
+  - `app/api/tools.py`: `confirm_booking` and `end_call_no_availability` now send brief updates instead of full messages during multi-call, and don't mark state COMPLETED. `report_available_slots` sends brief update during multi-call.
+  - `app/api/callbacks.py`: Multi-call branch in `completed` and `failed`/`busy`/`no-answer` handlers. Collects results per provider, ranks when all done, sends consolidated message, creates calendar for best booking.
+  - `app/services/ranking.py` (NEW): `rank_results()` scoring function with availability/slot/rating weights.
+  - `app/services/messages.py`: Added `format_multi_call_start()`, `format_multi_call_update()`, `format_ranked_results()` formatters.
+- **Test:** Requires live testing: (1) Search → "todos" → parallel calls trigger. (2) Check logs for staggered `make_outbound_call`. (3) Brief WhatsApp updates per provider during calls. (4) After all complete → ranked summary. (5) Calendar for best booking. (6) Single call flow unchanged (pick "1").
