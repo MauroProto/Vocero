@@ -9,3 +9,5 @@ twilio==9.4.0
 elevenlabs==2.34.0
 resend==2.7.0
 python-multipart==0.0.20
+PyJWT>=2.9.0
+cryptography>=43.0.0

@@ -149,6 +149,7 @@ async def _trigger_call(from_number: str, state: ConversationState) -> None:
         conversation_id, call_sid = await make_outbound_call(
             to_number=state.provider_phone or "",
             dynamic_variables=dynamic_vars,
+            language=lang,
         )
         # Replace "pending" with actual IDs
         state.active_call_ids = [x for x in state.active_call_ids if x != "pending"]

@@ -1,7 +1,9 @@
 """Formatted WhatsApp message templates for Vocero."""
 
+import json
 import logging
 import re
+from dataclasses import dataclass
 
 import httpx
 
@@ -14,19 +16,53 @@ _client: httpx.AsyncClient | None = None
 _SUMMARY_PROMPT = """\
 You are analyzing a phone call transcript between a voice assistant ("agent") and a service provider ("user").
 
-Your job: write a SHORT, natural summary of what happened in the call. This summary will be sent via WhatsApp to the person who requested the call.
+Your job: extract structured data about what happened in the call AND write a SHORT summary for WhatsApp.
 
-Rules:
+Rules for summary_text:
 - Write in {language_name} ({language_code}).
-- If an appointment/booking was confirmed: include the date, time, and any important details (address, what to bring, cost, etc.).
+- If an appointment/booking was confirmed: include the date, time, and any important details.
 - If no appointment was booked: explain why (no availability, wrong number, voicemail, etc.).
-- If something else happened (information gathered, message left, etc.): summarize the key takeaway.
 - Be concise: 2-4 sentences max. This is WhatsApp, not an email.
 - Use a casual, friendly tone. In Spanish use "vos" (Argentine style).
 - Use WhatsApp formatting: *bold* for important details like dates/times.
 - Do NOT start with "La llamada..." or "The call..." — go straight to the result.
 - Do NOT include greetings or sign-offs.
+
+Rules for booking fields:
+- Set booking_confirmed to true ONLY if a specific appointment was agreed upon with a date and time.
+- date format: YYYY-MM-DD. time format: HH:MM (24h).
+- If no booking was confirmed, set booking_confirmed to false and leave other booking fields null.
+- duration_minutes: estimate based on the service type if not explicitly stated (default 60).
 """
+
+_SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary_text": {"type": "string", "description": "WhatsApp summary message"},
+        "booking_confirmed": {"type": "boolean"},
+        "date": {"type": ["string", "null"], "description": "YYYY-MM-DD or null"},
+        "time": {"type": ["string", "null"], "description": "HH:MM 24h or null"},
+        "duration_minutes": {"type": ["integer", "null"]},
+        "provider_name": {"type": ["string", "null"]},
+        "address": {"type": ["string", "null"]},
+        "notes": {"type": ["string", "null"]},
+    },
+    "required": ["summary_text", "booking_confirmed"],
+    "additionalProperties": False,
+}
+
+
+@dataclass
+class SmartSummaryResult:
+    """Structured result from call transcript analysis."""
+    summary_text: str
+    booking_confirmed: bool
+    date: str | None = None
+    time: str | None = None
+    duration_minutes: int | None = None
+    provider_name: str | None = None
+    address: str | None = None
+    notes: str | None = None
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -65,15 +101,18 @@ async def generate_smart_summary(
     provider_phone: str | None,
     conversation_data: dict,
     language: str = "es",
-) -> str:
-    """Use OpenAI to analyze the full transcript and generate an intelligent summary."""
+) -> SmartSummaryResult:
+    """Use OpenAI to analyze the full transcript and return structured summary + booking data."""
     name = provider_name or provider_phone or "?"
     transcript_text = _build_transcript_text(conversation_data, name)
 
     if not transcript_text:
-        if language == "es":
-            return f"Llamada con *{name}* finalizada. No pude obtener detalles de la conversacion."
-        return f"Call with *{name}* finished. Couldn't get conversation details."
+        fallback = (
+            f"Llamada con *{name}* finalizada. No pude obtener detalles de la conversacion."
+            if language == "es"
+            else f"Call with *{name}* finished. Couldn't get conversation details."
+        )
+        return SmartSummaryResult(summary_text=fallback, booking_confirmed=False)
 
     language_name = "Spanish" if language == "es" else "English"
     system_prompt = _SUMMARY_PROMPT.format(language_name=language_name, language_code=language)
@@ -90,31 +129,59 @@ async def generate_smart_summary(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                "max_completion_tokens": 300,
+                "max_completion_tokens": 500,
                 "temperature": 0.3,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "call_summary",
+                        "strict": True,
+                        "schema": _SUMMARY_SCHEMA,
+                    },
+                },
             },
         )
         resp.raise_for_status()
         data = resp.json()
-        summary = data["choices"][0]["message"]["content"].strip()
+        raw = json.loads(data["choices"][0]["message"]["content"])
 
-        if language == "es":
-            lines = [
-                f"Llamada con *{name}* finalizada.\n",
-                summary,
-                "\nPedime *\"transcript\"* si queres ver la conversacion completa.",
-            ]
-        else:
-            lines = [
-                f"Call with *{name}* finished.\n",
-                summary,
-                "\nSend *\"transcript\"* if you want the full conversation.",
-            ]
-        return "\n".join(lines)
+        return SmartSummaryResult(
+            summary_text=raw["summary_text"],
+            booking_confirmed=raw.get("booking_confirmed", False),
+            date=raw.get("date"),
+            time=raw.get("time"),
+            duration_minutes=raw.get("duration_minutes"),
+            provider_name=raw.get("provider_name") or name,
+            address=raw.get("address"),
+            notes=raw.get("notes"),
+        )
 
     except Exception:
         logger.exception("Failed to generate smart summary, falling back to basic")
-        return _format_basic_summary(name, conversation_data, language)
+        fallback = _format_basic_summary(name, conversation_data, language)
+        return SmartSummaryResult(summary_text=fallback, booking_confirmed=False)
+
+
+def format_summary_message(result: SmartSummaryResult, provider_name: str, language: str = "es", calendar_added: bool = False) -> str:
+    """Build the final WhatsApp message from a SmartSummaryResult."""
+    name = provider_name or "?"
+    if language == "es":
+        lines = [
+            f"Llamada con *{name}* finalizada.\n",
+            result.summary_text,
+        ]
+        if calendar_added:
+            lines.append("\nAgregado al calendario.")
+        lines.append("\nPedime *\"transcript\"* si queres ver la conversacion completa.")
+    else:
+        lines = [
+            f"Call with *{name}* finished.\n",
+            result.summary_text,
+        ]
+        if calendar_added:
+            lines.append("\nAdded to calendar.")
+        lines.append("\nSend *\"transcript\"* if you want the full conversation.")
+    return "\n".join(lines)
 
 
 def _format_basic_summary(name: str, conversation_data: dict, language: str) -> str:

@@ -3,8 +3,9 @@ import logging
 
 from fastapi import APIRouter, Request
 
+from app.services.calendar import create_calendar_event
 from app.services.elevenlabs_call import fetch_conversation_details, pop_call
-from app.services.messages import format_call_failed, generate_smart_summary
+from app.services.messages import format_call_failed, format_summary_message, generate_smart_summary
 from app.services.state import ConversationStatus, find_state_by_conversation_id
 from app.services.twilio import send_whatsapp_message
 
@@ -51,7 +52,23 @@ async def call_status_callback(request: Request):
             await asyncio.sleep(5)
             conv_data = await fetch_conversation_details(conversation_id)
             if conv_data:
-                msg = await generate_smart_summary(state.provider_name, state.provider_phone, conv_data, language=lang)
+                summary_result = await generate_smart_summary(state.provider_name, state.provider_phone, conv_data, language=lang)
+
+                # Create calendar event if booking was confirmed
+                calendar_added = False
+                if summary_result.booking_confirmed and summary_result.date and summary_result.time:
+                    event_summary = f"Turno: {summary_result.provider_name or state.provider_name}"
+                    link = await create_calendar_event(
+                        summary=event_summary,
+                        start_date=summary_result.date,
+                        start_time=summary_result.time,
+                        duration_minutes=summary_result.duration_minutes or 60,
+                        location=summary_result.address,
+                        description=summary_result.notes,
+                    )
+                    calendar_added = link is not None
+
+                msg = format_summary_message(summary_result, state.provider_name, language=lang, calendar_added=calendar_added)
                 await send_whatsapp_message(phone, msg)
                 state.call_results.append({
                     "provider": state.provider_name,

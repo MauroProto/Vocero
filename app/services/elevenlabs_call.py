@@ -20,6 +20,7 @@ _active_calls: dict[str, str] = {}
 async def make_outbound_call(
     to_number: str,
     dynamic_variables: dict[str, str] | None = None,
+    language: str = "es",
 ) -> tuple[str, str]:
     """Place outbound call via ElevenLabs register-call + Twilio.
 
@@ -27,9 +28,13 @@ async def make_outbound_call(
     2. Create Twilio call with that TwiML
     3. Twilio connects directly to ElevenLabs (handles audio natively)
     """
+    # Pick agent based on language
+    agent_id = settings.elevenlabs_agent_id_en if language == "en" else settings.elevenlabs_agent_id
+    logger.info("Using %s agent: %s", language, agent_id)
+
     # Step 1: Register call with ElevenLabs
     register_body: dict = {
-        "agent_id": settings.elevenlabs_agent_id,
+        "agent_id": agent_id,
         "from_number": settings.twilio_phone_number,
         "to_number": to_number,
         "direction": "outbound",
@@ -37,16 +42,6 @@ async def make_outbound_call(
     if dynamic_variables:
         register_body["conversation_initiation_client_data"] = {
             "dynamic_variables": dynamic_variables,
-        }
-
-    # Override first message for English calls
-    lang = (dynamic_variables or {}).get("language", "es")
-    if lang == "en":
-        user_name = (dynamic_variables or {}).get("user_name", "")
-        service_type = (dynamic_variables or {}).get("service_type", "")
-        first_msg = f"Hi, this is {user_name}. I'm calling about {service_type}." if user_name else f"Hi, I'm calling about {service_type}."
-        register_body["conversation_config_override"] = {
-            "agent": {"first_message": first_msg},
         }
 
     async with httpx.AsyncClient() as client:

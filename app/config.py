@@ -18,7 +18,8 @@ class Settings(BaseSettings):
 
     # ElevenLabs
     elevenlabs_api_key: str = ""
-    elevenlabs_agent_id: str = ""
+    elevenlabs_agent_id: str = ""        # Spanish agent
+    elevenlabs_agent_id_en: str = ""     # English agent
     elevenlabs_phone_number_id: str = ""
 
     # OpenAI
@@ -30,6 +31,10 @@ class Settings(BaseSettings):
 
     # Google Places
     google_places_api_key: str = ""
+
+    # Google Calendar
+    google_service_account_file: str = ""
+    google_calendar_id: str = "primary"
 
     # App
     app_base_url: str = "http://localhost:8000"
