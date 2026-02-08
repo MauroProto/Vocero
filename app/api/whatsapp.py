@@ -353,9 +353,13 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
                         else None
                     )
                     if reason:
-                        msg = f"Dale, ya llamo a *{selected.name}* por lo de {reason}!"
+                        msg = (f"Dale, ya llamo a *{selected.name}* por lo de {reason}!"
+                               if lang == "es"
+                               else f"Got it, calling *{selected.name}* about {reason}!")
                     else:
-                        msg = f"Dale, ya llamo a *{selected.name}*!"
+                        msg = (f"Dale, ya llamo a *{selected.name}*!"
+                               if lang == "es"
+                               else f"Got it, calling *{selected.name}*!")
                     await _send_and_track(state, from_number, msg)
                 else:
                     await send_whatsapp_message(
@@ -387,7 +391,12 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
             if has_context:
                 _prepare_for_new_call(state)
                 reason = state.pending_entities.service_type
-                msg = f"Dale, ya llamo a *{contact.name or contact.phone}* por lo de {reason}!"
+                lang = state.language.value
+                name = contact.name or contact.phone
+                if lang == "es":
+                    msg = f"Dale, ya llamo a *{name}* por lo de {reason}!"
+                else:
+                    msg = f"Got it, calling *{name}* about {reason}!"
                 await _send_and_track(state, from_number, msg)
             else:
                 # Don't call blindly — ask what they need first
@@ -401,9 +410,11 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
                     msg = f"Got *{name}*'s number. What do you need me to tell them? (e.g., book a haircut for tomorrow at 10)"
                 await _send_and_track(state, from_number, msg)
         else:
-            await send_whatsapp_message(
-                from_number, "No pude leer el contacto. Mandame el numero como texto."
-            )
+            lang = state.language.value
+            err = ("No pude leer el contacto. Mandame el numero como texto."
+                   if lang == "es"
+                   else "Couldn't read the contact. Send me the number as text.")
+            await send_whatsapp_message(from_number, err)
 
     elif msg_type == "location":
         loc = message.get("location", {})
@@ -466,7 +477,11 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
                         logger.exception("Places search failed")
         except Exception:
             logger.exception("Intent parsing failed")
-            await send_whatsapp_message(from_number, "Perdon, tuve un error. Intenta de nuevo.")
+            lang = state.language.value
+            err = ("Perdon, tuve un error. Intenta de nuevo."
+                   if lang == "es"
+                   else "Sorry, something went wrong. Please try again.")
+            await send_whatsapp_message(from_number, err)
 
     elif msg_type == "audio":
         media_id = message.get("audio", {}).get("id", "")
@@ -493,9 +508,11 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
                             logger.exception("Places search failed")
             except Exception:
                 logger.exception("Failed to process voice note")
-                await send_whatsapp_message(
-                    from_number, "No pude procesar el audio. Intenta de nuevo o mandame texto."
-                )
+                lang = state.language.value
+                err = ("No pude procesar el audio. Intenta de nuevo o mandame texto."
+                       if lang == "es"
+                       else "Couldn't process the audio. Try again or send me a text message.")
+                await send_whatsapp_message(from_number, err)
 
     # Trigger outbound call if state is CALLING and we have a number
     if state.status == ConversationStatus.CALLING and state.provider_phone and not state.active_call_ids:
