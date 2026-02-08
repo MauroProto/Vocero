@@ -41,7 +41,8 @@
       "Bash(open:*)",
       "Bash(ngrok config add-authtoken:*)",
       "Bash(pkill:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "WebFetch(domain:json2video.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -46,11 +46,12 @@ async def call_status_callback(request: Request):
         if result and conversation_id:
             phone, state = result
             lang = state.language.value
+            state.last_conversation_id = conversation_id
             # Wait a bit for ElevenLabs to finalize the conversation
             await asyncio.sleep(3)
             conv_data = await fetch_conversation_details(conversation_id)
             if conv_data:
-                msg = format_call_summary(state.provider_name, conv_data, language=lang)
+                msg = format_call_summary(state.provider_name, state.provider_phone, conv_data, language=lang)
                 await send_whatsapp_message(phone, msg)
                 state.call_results.append({
                     "provider": state.provider_name,

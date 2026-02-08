@@ -7,9 +7,9 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.config import settings
 from app.schemas.intent import IntentResult, IntentType, Language
-from app.services.elevenlabs_call import make_outbound_call
+from app.services.elevenlabs_call import fetch_conversation_details, make_outbound_call
 from app.services.intent import extract_intent
-from app.services.messages import format_call_failed, format_calling_message, format_search_results
+from app.services.messages import format_call_failed, format_calling_message, format_search_results, format_transcript
 from app.services.places import search_places
 from app.services.state import (
     ConversationState,
@@ -197,6 +197,19 @@ async def _handle_message_inner(from_number: str, profile_name: str, message: di
     msg_type = message.get("type", "")
 
     state = get_state(from_number)
+
+    # Handle transcript request BEFORE reset (so last_conversation_id is still available)
+    if msg_type == "text" and state.last_conversation_id:
+        body_lower = message.get("text", {}).get("body", "").strip().lower()
+        if body_lower in ("transcript", "transcripcion", "transcripción"):
+            conv_data = await fetch_conversation_details(state.last_conversation_id)
+            if conv_data:
+                msg = format_transcript(state.provider_name or state.provider_phone, conv_data)
+                await send_whatsapp_message(from_number, msg)
+            else:
+                no_msg = "No pude obtener el transcript." if state.language == Language.ES else "Couldn't retrieve the transcript."
+                await send_whatsapp_message(from_number, no_msg)
+            return
 
     # Auto-reset completed conversations so user can start fresh
     if state.status == ConversationStatus.COMPLETED:

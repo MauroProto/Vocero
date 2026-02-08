@@ -70,13 +70,22 @@ def _clean_agent_text(text: str) -> str:
 
 def format_call_summary(
     provider_name: str | None,
+    provider_phone: str | None,
     conversation_data: dict,
     language: str = "es",
 ) -> str:
     """Format a short post-call summary (no transcript)."""
-    name = provider_name or "the provider"
+    name = provider_name or provider_phone or "?"
     analysis = conversation_data.get("analysis") or {}
     summary_text = analysis.get("transcript_summary", "")
+
+    # Build a clean summary from transcript if ElevenLabs summary is missing or in wrong language
+    if not summary_text:
+        summary_text = _extract_key_details(conversation_data, language)
+    else:
+        # ElevenLabs always returns English summaries — keep as-is for English, translate hint for Spanish
+        if language == "es":
+            summary_text = _extract_key_details(conversation_data, language) or summary_text
 
     if language == "es":
         lines = [f"Llamada con *{name}* finalizada."]
@@ -92,12 +101,43 @@ def format_call_summary(
     return "\n".join(lines)
 
 
+def _extract_key_details(conversation_data: dict, language: str) -> str:
+    """Extract key booking details from transcript (date, time, outcome)."""
+    transcript = conversation_data.get("transcript", [])
+    if not transcript:
+        return ""
+
+    # Get the last few agent messages which usually contain the confirmation
+    agent_msgs = []
+    for entry in transcript:
+        msg = entry.get("message") or ""
+        msg = _clean_agent_text(msg)
+        if entry.get("role") == "agent" and msg:
+            agent_msgs.append(msg)
+
+    if not agent_msgs:
+        return ""
+
+    # The last substantive agent message usually has the confirmation/outcome
+    last_msg = agent_msgs[-1] if agent_msgs else ""
+    # Check second-to-last too (last might be "goodbye")
+    confirmation_msg = ""
+    for msg in reversed(agent_msgs):
+        if len(msg) > 30:  # Skip short messages like "Hasta luego"
+            confirmation_msg = msg
+            break
+
+    if confirmation_msg:
+        return confirmation_msg
+    return ""
+
+
 def format_transcript(
     provider_name: str | None,
     conversation_data: dict,
 ) -> str:
     """Format the full call transcript."""
-    name = provider_name or "the provider"
+    name = provider_name or "?"
     transcript = conversation_data.get("transcript", [])
 
     lines = [f"*Transcript — {name}*\n"]
