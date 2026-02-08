@@ -1,145 +1,166 @@
 <div align="center">
 
-# VOCERO
+<br>
+
+# `VOCERO`
 
 **Your AI assistant that makes phone calls so you don't have to.**
 
-Send a WhatsApp message. Vocero calls the provider, books the appointment, and reports back.
+Send a WhatsApp message. Vocero calls the provider, books your appointment, and reports back.
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![ElevenLabs](https://img.shields.io/badge/ElevenLabs-Agents-000000?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiPjxyZWN0IHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgZmlsbD0iIzAwMCIvPjwvc3ZnPg==)](https://elevenlabs.io)
-[![Twilio](https://img.shields.io/badge/Twilio-Voice-F22F46?logo=twilio&logoColor=white)](https://twilio.com)
+<br>
+
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/fastapi-0.115-00897B?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![ElevenLabs](https://img.shields.io/badge/elevenlabs-agents-5D3FD3?style=flat-square)](https://elevenlabs.io)
+[![Twilio](https://img.shields.io/badge/twilio-voice-E8381E?style=flat-square&logo=twilio&logoColor=white)](https://twilio.com)
+[![OpenAI](https://img.shields.io/badge/openai-GPT-412991?style=flat-square&logo=openai&logoColor=white)](https://openai.com)
+
+<br>
 
 </div>
 
----
+## Overview
 
-## How it works
+Vocero is a **two-agent system** that automates appointment booking through WhatsApp:
 
-```
- WhatsApp                    Vocero                     Provider
- ─────────                  ────────                   ──────────
-    │                          │                           │
-    │  "Book me a haircut      │                           │
-    │   for tomorrow at 10"    │                           │
-    │ ─────────────────────▶   │                           │
-    │                          │   ☎️ AI voice call         │
-    │                          │ ─────────────────────▶    │
-    │                          │                           │
-    │                          │   "Hi, I'm calling on     │
-    │                          │    behalf of Mauro..."     │
-    │                          │                           │
-    │  "Calling provider..."   │   ◀─────────────────────  │
-    │ ◀─────────────────────   │   "Thursday 10am works"   │
-    │                          │                           │
-    │  "Booked! Thu at 10am"   │                           │
-    │  "Add to calendar: 🔗"   │                           │
-    │ ◀─────────────────────   │                           │
-```
+> **You** text WhatsApp &rarr; **WhatsApp Agent** understands your request &rarr; **Phone Agent** calls the provider &rarr; books the appointment &rarr; sends you the result + calendar link
 
-**Two-agent architecture:**
+| WhatsApp Agent | Phone Agent |
+|---|---|
+| FastAPI backend | ElevenLabs voice AI |
+| Receives messages, parses intent | Speaks on the phone in real time |
+| Orchestrates calls, delivers results | Negotiates appointments, uses mid-call tools |
 
-1. **WhatsApp Agent** — FastAPI backend that receives messages, understands intent, orchestrates calls, and delivers results
-2. **Phone Agent** — ElevenLabs voice AI that actually speaks on the phone, negotiates appointments, and uses mid-call tools
+<br>
 
 ## Features
 
-- **Voice & text input** — Send text messages or voice notes in English or Spanish
-- **Smart intent parsing** — NLU extracts what you need, who to call, and when
-- **AI phone calls** — ElevenLabs voice agent calls providers and negotiates in natural language
-- **Google Places search** — "Find me a dentist in Palermo" → ranked results with ratings
-- **Parallel calls** — Call up to 3 providers simultaneously, get ranked results
-- **Real-time updates** — WhatsApp progress messages as the call happens
-- **Calendar integration** — Google Calendar link sent after confirmed bookings
-- **Bilingual** — Full EN/ES support across all messages and voice calls
+| | Feature | Description |
+|---|---|---|
+| **Voice & Text** | Send text or voice notes | Automatic transcription via ElevenLabs Scribe |
+| **Smart NLU** | Intent extraction | GPT parses what you need, who to call, when |
+| **AI Calls** | Autonomous phone calls | Voice agent negotiates with providers naturally |
+| **Search** | Google Places | "Find a dentist near me" &rarr; ranked results |
+| **Parallel** | Multi-provider calls | Call up to 3 providers simultaneously |
+| **Live Updates** | Real-time progress | WhatsApp messages as the call happens |
+| **Calendar** | Auto calendar link | Google Calendar event after confirmed bookings |
+| **Bilingual** | EN / ES | Full support across voice, messages, and UI |
+
+<br>
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Backend | Python 3.12 + FastAPI |
-| Database | PostgreSQL 16 (Docker) |
-| Voice AI | ElevenLabs Conversational AI |
-| Telephony | Twilio (outbound PSTN) |
-| WhatsApp | Meta Cloud API |
-| NLU | OpenAI GPT |
-| Search | Google Places API (New) |
-| Email | Resend |
+```
+WhatsApp (Meta Cloud API)
+    ↓
+FastAPI + Python 3.12          ←→  OpenAI GPT (NLU + summaries)
+    ↓                          ←→  Google Places API (search)
+ElevenLabs Conversational AI   ←→  Twilio (PSTN calls)
+    ↓
+PostgreSQL (Docker)
+```
+
+<br>
 
 ## Project Structure
 
 ```
-vocero/
-├── app/
-│   ├── main.py                  # FastAPI entry + routers
-│   ├── config.py                # Pydantic Settings
-│   ├── api/
-│   │   ├── whatsapp.py          # Meta webhook (incoming messages)
-│   │   ├── callbacks.py         # Twilio call status + post-call processing
-│   │   └── tools.py             # ElevenLabs server tools (mid-call webhooks)
-│   ├── services/
-│   │   ├── elevenlabs_call.py   # Outbound calls via register-call + Twilio
-│   │   ├── intent.py            # NLU intent extraction (OpenAI)
-│   │   ├── transcription.py     # Voice note STT (ElevenLabs Scribe)
-│   │   ├── messages.py          # WhatsApp message templates + GPT summaries
-│   │   ├── calendar.py          # Google Calendar link generator
-│   │   ├── places.py            # Google Places search
-│   │   ├── state.py             # In-memory conversation state machine
-│   │   ├── ranking.py           # Multi-call result ranking
-│   │   └── twilio.py            # WhatsApp messaging via Meta Cloud API
-│   └── schemas/
-│       ├── intent.py            # Intent/entity schemas
-│       └── tools.py             # Voice agent tool schemas
-├── docker-compose.yml
-├── Dockerfile
-├── requirements.txt
-└── .env.example
+app/
+├── main.py                    # Entry point + routers
+├── config.py                  # Pydantic Settings (env vars)
+├── api/
+│   ├── whatsapp.py            # Meta webhook — incoming messages
+│   ├── callbacks.py           # Twilio status + post-call processing
+│   └── tools.py               # ElevenLabs mid-call server tools
+├── services/
+│   ├── elevenlabs_call.py     # Outbound calls (register-call + Twilio)
+│   ├── intent.py              # NLU intent extraction
+│   ├── transcription.py       # Voice note STT
+│   ├── messages.py            # Message templates + GPT summaries
+│   ├── calendar.py            # Google Calendar link builder
+│   ├── places.py              # Google Places search
+│   ├── state.py               # Conversation state machine
+│   ├── ranking.py             # Multi-call result ranking
+│   └── twilio.py              # WhatsApp via Meta Cloud API
+└── schemas/
+    ├── intent.py              # Intent / entity schemas
+    └── tools.py               # Voice agent tool schemas
 ```
 
-## Quick Start
+<br>
+
+## Getting Started
 
 ### Prerequisites
 
 - Python 3.12+
 - Docker & Docker Compose
-- [ngrok](https://ngrok.com) (to expose local server for webhooks)
-- API keys: Twilio, ElevenLabs, Meta WhatsApp, OpenAI, Google Places
+- [ngrok](https://ngrok.com) for webhook tunneling
+- API keys: **Twilio**, **ElevenLabs**, **Meta WhatsApp**, **OpenAI**, **Google Places**
 
-### 1. Clone & configure
-
-```bash
-git clone https://github.com/your-username/vocero.git
-cd vocero
-cp .env.example .env
-# Fill in your API keys in .env
-```
-
-### 2. Run
-
-**With Docker:**
-```bash
-docker compose up --build
-```
-
-**Without Docker (dev):**
-```bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-### 3. Expose & connect
+### Setup
 
 ```bash
+# Clone
+git clone https://github.com/your-username/vocero.git && cd vocero
+
+# Configure
+cp .env.example .env   # then fill in your API keys
+
+# Run (pick one)
+docker compose up --build                  # with Docker
+pip install -r requirements.txt && uvicorn app.main:app --reload   # without Docker
+
+# Expose for webhooks
 ngrok http 8000
 ```
 
-Set the ngrok URL as your webhook in:
-- **Meta Developers** → WhatsApp → Configuration → `{ngrok_url}/api/whatsapp`
-- **Twilio Console** → Phone Number → `{ngrok_url}/api/call-status`
-- **ElevenLabs** → Agent → Server tools → `{ngrok_url}/api/tools/*`
+Then point your webhooks to the ngrok URL:
 
-### Environment Variables
+| Service | Webhook URL |
+|---|---|
+| Meta WhatsApp | `{ngrok}/api/whatsapp` |
+| Twilio | `{ngrok}/api/call-status` |
+| ElevenLabs | `{ngrok}/api/tools/*` |
+
+<br>
+
+## How Calls Work
+
+```
+1. POST /v1/convai/twilio/register-call  →  ElevenLabs returns TwiML
+2. Twilio creates call with that TwiML   →  connects directly to ElevenLabs WebSocket
+3. Voice agent speaks, negotiates        →  triggers server tools mid-call
+4. Call ends                             →  GPT analyzes full transcript
+5. Structured summary + calendar link    →  sent to user via WhatsApp
+```
+
+No manual audio bridging. Twilio talks directly to ElevenLabs.
+
+<br>
+
+## API Reference
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/whatsapp` | Meta webhook verification |
+| `POST` | `/api/whatsapp` | Incoming WhatsApp messages |
+| `POST` | `/api/call-status` | Twilio call status callbacks |
+| `POST` | `/api/tools/report_available_slots` | Agent reports availability |
+| `POST` | `/api/tools/check_user_preference` | Validate slot vs user prefs |
+| `POST` | `/api/tools/confirm_booking` | Confirm a booking |
+| `POST` | `/api/tools/end_call_no_availability` | Report no availability |
+| `GET` | `/health` | Health check |
+
+<br>
+
+## Environment Variables
+
+<details>
+<summary>View all variables</summary>
+
+<br>
 
 ```env
 # Twilio
@@ -156,7 +177,7 @@ META_WEBHOOK_VERIFY_TOKEN=vocero_verify
 # ElevenLabs
 ELEVENLABS_API_KEY=
 ELEVENLABS_AGENT_ID=
-ELEVENLABS_AGENT_ID_EN=          # English voice agent (optional)
+ELEVENLABS_AGENT_ID_EN=
 ELEVENLABS_PHONE_NUMBER_ID=
 
 # OpenAI
@@ -170,38 +191,20 @@ APP_BASE_URL=https://your-ngrok-url.dev
 DEBUG=true
 ```
 
-## API Routes
+</details>
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/api/whatsapp` | Meta webhook verification |
-| `POST` | `/api/whatsapp` | Incoming WhatsApp messages |
-| `POST` | `/api/call-status` | Twilio call status callbacks |
-| `POST` | `/api/tools/report_available_slots` | Agent reports provider availability |
-| `POST` | `/api/tools/check_user_preference` | Agent validates slot vs user preference |
-| `POST` | `/api/tools/confirm_booking` | Agent confirms a booking |
-| `POST` | `/api/tools/end_call_no_availability` | Agent reports no availability |
-| `GET` | `/health` | Health check |
-
-## How Outbound Calls Work
-
-Vocero uses ElevenLabs' native Twilio integration — no manual audio bridging:
-
-1. Backend calls `POST /v1/convai/twilio/register-call` with agent config + dynamic variables
-2. ElevenLabs returns TwiML with `<Connect><Stream>` pointing to their WebSocket
-3. Twilio creates the call using that TwiML
-4. **Twilio connects directly to ElevenLabs** — audio format handled natively
-5. Mid-call, the voice agent triggers server tools (webhooks) to report slots, confirm bookings, etc.
-6. On call completion, GPT analyzes the full transcript and sends a structured summary to WhatsApp
+<br>
 
 ## License
 
 MIT
 
+<br>
+
 ---
 
 <div align="center">
 
-Built for the **ElevenLabs CallPilot Challenge**
+Built for the [ElevenLabs CallPilot Challenge](https://elevenlabs.io)
 
 </div>
