@@ -29,6 +29,7 @@ class ConversationState:
     last_bot_message: str | None = None
     message_history: list[str] = field(default_factory=list)
     search_results: list | None = None
+    last_conversation_id: str | None = None
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 

@@ -73,15 +73,34 @@ def format_call_summary(
     conversation_data: dict,
     language: str = "es",
 ) -> str:
-    """Format a post-call summary from ElevenLabs conversation data."""
+    """Format a short post-call summary (no transcript)."""
     name = provider_name or "the provider"
-
-    # Extract analysis (can be None)
     analysis = conversation_data.get("analysis") or {}
+    summary_text = analysis.get("transcript_summary", "")
 
-    # Extract transcript, skip empty messages
+    if language == "es":
+        lines = [f"Llamada con *{name}* finalizada."]
+        if summary_text:
+            lines.append(f"\n{summary_text}")
+        lines.append("\nPedime *\"transcript\"* si queres ver la conversacion completa.")
+    else:
+        lines = [f"Call with *{name}* finished."]
+        if summary_text:
+            lines.append(f"\n{summary_text}")
+        lines.append("\nSend *\"transcript\"* if you want the full conversation.")
+
+    return "\n".join(lines)
+
+
+def format_transcript(
+    provider_name: str | None,
+    conversation_data: dict,
+) -> str:
+    """Format the full call transcript."""
+    name = provider_name or "the provider"
     transcript = conversation_data.get("transcript", [])
-    transcript_lines = []
+
+    lines = [f"*Transcript — {name}*\n"]
     for entry in transcript:
         role = entry.get("role", "")
         message = entry.get("message") or ""
@@ -89,29 +108,11 @@ def format_call_summary(
         if not message:
             continue
         if role == "agent":
-            transcript_lines.append(f"*Vocero:* {message}")
+            lines.append(f"*Vocero:* {message}")
         elif role == "user":
-            transcript_lines.append(f"*{name}:* {message}")
+            lines.append(f"*{name}:* {message}")
 
-    # Build summary
-    if language == "es":
-        lines = [f"Llamada con *{name}* finalizada."]
-        if analysis.get("transcript_summary"):
-            lines.append(f"\n*Resumen:* {analysis['transcript_summary']}")
-        if transcript_lines:
-            lines.append("\n*Conversacion:*")
-            lines.extend(transcript_lines[-15:])  # Last 15 exchanges max
-        lines.append("\nSi necesitas algo mas, avisame!")
-    else:
-        lines = [f"Call with *{name}* finished."]
-        if analysis.get("transcript_summary"):
-            lines.append(f"\n*Summary:* {analysis['transcript_summary']}")
-        if transcript_lines:
-            lines.append("\n*Conversation:*")
-            lines.extend(transcript_lines[-15:])
-        lines.append("\nLet me know if you need anything else!")
-
-    return "\n".join(lines)
+    return "\n".join(lines) if len(lines) > 1 else f"No hay transcript disponible para la llamada con *{name}*."
 
 
 def format_search_results(results: list, language: str = "es") -> str:
