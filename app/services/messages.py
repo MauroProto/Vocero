@@ -62,6 +62,12 @@ def format_call_failed(provider_name: str | None, language: str = "es") -> str:
     return f"Couldn't complete the call to *{name}*. Want me to try again?"
 
 
+def _clean_agent_text(text: str) -> str:
+    """Remove XML-like language tags from agent responses."""
+    import re
+    return re.sub(r"</?[A-Za-z]+>", "", text).strip()
+
+
 def format_call_summary(
     provider_name: str | None,
     conversation_data: dict,
@@ -70,17 +76,18 @@ def format_call_summary(
     """Format a post-call summary from ElevenLabs conversation data."""
     name = provider_name or "the provider"
 
-    # Extract analysis
-    analysis = conversation_data.get("analysis", {})
-    summary = analysis.get("call_successful", "")
-    eval_criteria = analysis.get("evaluation_criteria_results", {})
+    # Extract analysis (can be None)
+    analysis = conversation_data.get("analysis") or {}
 
-    # Extract transcript
+    # Extract transcript, skip empty messages
     transcript = conversation_data.get("transcript", [])
     transcript_lines = []
     for entry in transcript:
         role = entry.get("role", "")
-        message = entry.get("message", "")
+        message = entry.get("message") or ""
+        message = _clean_agent_text(message)
+        if not message:
+            continue
         if role == "agent":
             transcript_lines.append(f"*Vocero:* {message}")
         elif role == "user":
