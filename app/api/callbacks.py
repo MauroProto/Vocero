@@ -1,8 +1,10 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, Request
 
-from app.services.messages import format_call_failed
+from app.services.elevenlabs_call import fetch_conversation_details, pop_call
+from app.services.messages import format_call_failed, format_call_summary
 from app.services.state import ConversationStatus, find_state_by_conversation_id
 from app.services.twilio import send_whatsapp_message
 
@@ -32,5 +34,30 @@ async def call_status_callback(request: Request):
                 "provider": state.provider_name,
                 "outcome": call_status,
             })
+        pop_call(call_sid)
+
+    elif call_status == "completed":
+        # Look up conversation_id and user state
+        conversation_id = pop_call(call_sid)
+        result = find_state_by_conversation_id(call_sid) or (
+            find_state_by_conversation_id(conversation_id) if conversation_id else None
+        )
+
+        if result and conversation_id:
+            phone, state = result
+            lang = state.language.value
+            # Wait a bit for ElevenLabs to finalize the conversation
+            await asyncio.sleep(3)
+            conv_data = await fetch_conversation_details(conversation_id)
+            if conv_data:
+                msg = format_call_summary(state.provider_name, conv_data, language=lang)
+                await send_whatsapp_message(phone, msg)
+                state.call_results.append({
+                    "provider": state.provider_name,
+                    "outcome": "completed",
+                    "conversation_id": conversation_id,
+                })
+            if state.status != ConversationStatus.COMPLETED:
+                state.status = ConversationStatus.COMPLETED
 
     return {"status": "ok"}

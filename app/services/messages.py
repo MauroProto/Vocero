@@ -62,6 +62,51 @@ def format_call_failed(provider_name: str | None, language: str = "es") -> str:
     return f"Couldn't complete the call to *{name}*. Want me to try again?"
 
 
+def format_call_summary(
+    provider_name: str | None,
+    conversation_data: dict,
+    language: str = "es",
+) -> str:
+    """Format a post-call summary from ElevenLabs conversation data."""
+    name = provider_name or "the provider"
+
+    # Extract analysis
+    analysis = conversation_data.get("analysis", {})
+    summary = analysis.get("call_successful", "")
+    eval_criteria = analysis.get("evaluation_criteria_results", {})
+
+    # Extract transcript
+    transcript = conversation_data.get("transcript", [])
+    transcript_lines = []
+    for entry in transcript:
+        role = entry.get("role", "")
+        message = entry.get("message", "")
+        if role == "agent":
+            transcript_lines.append(f"*Vocero:* {message}")
+        elif role == "user":
+            transcript_lines.append(f"*{name}:* {message}")
+
+    # Build summary
+    if language == "es":
+        lines = [f"Llamada con *{name}* finalizada."]
+        if analysis.get("transcript_summary"):
+            lines.append(f"\n*Resumen:* {analysis['transcript_summary']}")
+        if transcript_lines:
+            lines.append("\n*Conversacion:*")
+            lines.extend(transcript_lines[-15:])  # Last 15 exchanges max
+        lines.append("\nSi necesitas algo mas, avisame!")
+    else:
+        lines = [f"Call with *{name}* finished."]
+        if analysis.get("transcript_summary"):
+            lines.append(f"\n*Summary:* {analysis['transcript_summary']}")
+        if transcript_lines:
+            lines.append("\n*Conversation:*")
+            lines.extend(transcript_lines[-15:])
+        lines.append("\nLet me know if you need anything else!")
+
+    return "\n".join(lines)
+
+
 def format_search_results(results: list, language: str = "es") -> str:
     """Format Google Places search results as a numbered WhatsApp message."""
     if not results:
